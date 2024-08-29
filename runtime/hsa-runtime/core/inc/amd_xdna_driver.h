@@ -47,6 +47,7 @@
 
 #include "core/inc/driver.h"
 #include "core/inc/memory_region.h"
+#include "core/driver/xdna/uapi/amdxdna_accel.h"
 
 namespace rocr {
 namespace core {
@@ -68,6 +69,9 @@ public:
 
   hsa_status_t Init() override;
   hsa_status_t QueryKernelModeDriver(core::DriverQuery query) override;
+
+  hsa_status_t GetHandleMappings(std::unordered_map<uint32_t, void*> &vmem_handle_mappings);
+  hsa_status_t GetFd(int &fd);
 
   hsa_status_t GetAgentProperties(core::Agent &agent) const override;
   hsa_status_t
