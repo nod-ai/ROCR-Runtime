@@ -1,8 +1,23 @@
 name: CI Linux
 
 on:
-  workflow_call:
   workflow_dispatch:
+    inputs:
+      force_debug_with_tmate:
+        type: boolean
+        description: 'Run the build with tmate session'
+        required: false
+        default: false
+      debug_with_tmate:
+        type: boolean
+        description: 'Run the build with a tmate session ONLY in case of failure'
+        required: false
+        default: false
+      release:
+        type: boolean
+        description: 'Release to latest'
+        required: false
+        default: false
   pull_request:
   merge_group:
   push:
@@ -10,52 +25,33 @@ on:
       - main
 
 concurrency:
-  # A PR number if a pull request and otherwise the commit hash. This cancels
-  # queued and in-progress runs for the same PR (presubmit) or commit
-  # (postsubmit).
   group: ci-build-test-cpp-linux-${{ github.event.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
   build:
     name: Build (linux)
-    strategy:
-      fail-fast: false
-      matrix:
-        runs-on:
-          - ubuntu-22.04
-#          - nod-ai-shared-cpubuilder-manylinux-x86_64
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: ubuntu-22.04
+    container:
+      image: quay.io/pypa/manylinux_2_28_x86_64
+      env:
+        GITHUB_SHA: ${{ github.sha }}
     steps:
       - name: Install tmate
-        if: ${{ matrix.runs-on == 'nod-ai-shared-cpubuilder-manylinux-x86_64' }}
         run: dnf install -y epel-release && dnf install -y tmate
 
-      - name: Configure local git mirrors
-        if: ${{ matrix.runs-on == 'nod-ai-shared-cpubuilder-manylinux-x86_64' }}
-        run: |
-          /gitmirror/scripts/trigger_update_mirrors.sh
-          /gitmirror/scripts/git_config.sh
-
       - name: Install deps
-        if: ${{ matrix.runs-on == 'nod-ai-shared-cpubuilder-manylinux-x86_64' }}
         run: |
           dnf install -y almalinux-release-devel
-          yum install -y elfutils-libelf-devel p7zip p7zip-plugins
-
-      - name: Install deps
-        if: ${{ matrix.runs-on == 'ubuntu-22.04' }}
-        run: |
-          sudo apt install -y libelf-dev libnuma-dev libdrm-dev
+          yum install -y elfutils-libelf-devel p7zip p7zip-plugins \
+                         sudo ncurses-compat-libs openssh vim-common
 
       - name: Setup Cpp
-        if: ${{ matrix.runs-on == 'ubuntu-22.04' }}
         uses: aminya/setup-cpp@v1
         with:
           compiler: llvm-18
           cmake: true
           ninja: true
-          ccache: true
 
       - name: "Checking out repository"
         uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
@@ -63,7 +59,6 @@ jobs:
           submodules: recursive
 
       - name: Build and install libnuma
-        if: ${{ matrix.runs-on == 'nod-ai-shared-cpubuilder-manylinux-x86_64' }}
         run: |
           curl --silent -L \
             https://github.com/numactl/numactl/releases/download/v2.0.18/numactl-2.0.18.tar.gz \
@@ -71,6 +66,9 @@ jobs:
           tar -xf numactl-2.0.18.tar.gz
           pushd numactl-2.0.18
           ./configure
+          # i have no idea why this is necessary
+          # but without it you get something about "can't cd into dir"
+          sed -i '7563s/`cd "$dir" && pwd`/$dir/g' libtool
           make install
           popd
 
@@ -82,22 +80,22 @@ jobs:
 
       - name: Build ROCR distro
         run: |
-          rocr_dir="$(cd ${{ github.workspace }} && pwd)"
-          build_rocr_dir="${{ github.workspace }}/rocr-build"
+          rocr_dir="$(cd $GITHUB_WORKSPACE && pwd)"
+          build_rocr_dir="$GITHUB_WORKSPACE/rocr-build"
           mkdir -p "$build_rocr_dir"
           build_rocr_dir="$(cd $build_rocr_dir && pwd)"
-          rocr_install_dir="${{ github.workspace }}/rocr-install"
+          rocr_install_dir="$GITHUB_WORKSPACE/rocr-install"
           
           cmake -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$rocr_install_dir" \
-            -DClang_DIR=/usr/lib/llvm-18/lib/cmake/clang \
-            -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm \
+            -DClang_DIR=$HOME/llvm/lib/cmake/clang \
+            -DLLVM_DIR=$HOME/llvm/lib/cmake/llvm \
             -DIMAGE_SUPPORT=OFF \
             -S "$rocr_dir" -B "$build_rocr_dir"
           
           cmake --build "$build_rocr_dir" --target install
-          tar -cf rocr-$(git rev-parse --short HEAD).tar rocr-install
+          tar -cf rocr-${GITHUB_SHA::8}.tar rocr-install
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -108,11 +106,11 @@ jobs:
           if-no-files-found: warn
 
       - name: Setup tmate session
-        if: ${{ failure() }}
+        if: ${{ (failure() && inputs.debug_with_tmate) || inputs.force_debug_with_tmate }}
         uses: mxschmitt/action-tmate@v3.18
         with:
           limit-access-to-actor: true
-          install-dependencies: ${{ matrix.runs-on == 'ubuntu-22.04' }}
+          install-dependencies: false
 
   test_aie:
     name: AIE tests
@@ -144,7 +142,7 @@ jobs:
           mkdir -p $build_dir
           cmake -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
-            "-Dhsa-runtime64_DIR=$hsa_runtime64_ROOT/lib/cmake/hsa-runtime64" \
+            "-Dhsa-runtime64_DIR=$hsa_runtime64_ROOT/lib64/cmake/hsa-runtime64" \
             -S "$PWD" -B "$build_dir"
           cmake --build "$build_dir" --target aie_hsa_bare_add_one
           
@@ -160,9 +158,36 @@ jobs:
           mkdir -p $build_dir
           cmake -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
-            "-Dhsa-runtime64_DIR=$hsa_runtime64_ROOT/lib/cmake/hsa-runtime64" \
+            "-Dhsa-runtime64_DIR=$hsa_runtime64_ROOT/lib64/cmake/hsa-runtime64" \
             -S "$PWD" -B "$build_dir"
           
           ! cmake --build "$build_dir" --target aie_hsa_dispatch_test
           
           popd
+
+  release:
+    name: Release
+    if: ${{ inputs.release }}
+    needs: [build, test_aie]
+    runs-on: ubuntu-22.04
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux_x86_64_distro
+
+      - name: Release current commit
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          artifacts: rocr-*.tar
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: "latest"
+          name: "latest"
+          removeArtifacts: false
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
+          artifactErrorsFailBuild: true
