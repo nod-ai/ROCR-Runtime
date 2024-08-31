@@ -22,7 +22,7 @@ on:
   merge_group:
   push:
     branches:
-      - main
+      - amd-staging
 
 concurrency:
   group: ci-build-test-cpp-linux-${{ github.event.number || github.sha }}
