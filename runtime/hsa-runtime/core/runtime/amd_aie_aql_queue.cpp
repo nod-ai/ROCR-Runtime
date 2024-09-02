@@ -66,6 +66,32 @@
 #include "core/inc/signal.h"
 #include "core/util/utils.h"
 
+// The number of arguments in the packet payload before we start passing operands
+constexpr int NON_OPERAND_COUNT = 6;
+
+// Used to transform an address into a device address
+constexpr int DEV_ADDR_BASE = 0x04000000;
+constexpr int DEV_ADDR_OFFSET_MASK = 0x02FFFFFF;
+
+// BO size allocated for commands
+constexpr int CMD_SIZE = 64;
+
+// This is a temp workaround. For some reason the first command count in a chain
+// needs to be a larger than it actually is, assuming there is some other data 
+// structure at the beginning
+// TODO: Look more into this
+constexpr int FIRST_CMD_COUNT_SIZE_INCREASE = 5;
+
+// Index of command payload where the instruction sequence 
+// address is located 
+constexpr int CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_IDX = 2;
+
+// Environment variable to define job submission timeout
+constexpr const char *TIMEOUT_ENV_VAR = "ROCR_AIE_TIMEOUT";
+constexpr int DEFAULT_TIMEOUT_VAL = 50;
+char *timeout_env_var_ptr = getenv(TIMEOUT_ENV_VAR);
+int TIMEOUT_VAL = timeout_env_var_ptr == nullptr ? DEFAULT_TIMEOUT_VAL : atoi(timeout_env_var_ptr);
+
 namespace rocr {
 namespace AMD {
 
@@ -228,7 +254,7 @@ hsa_status_t AieAqlQueue::ExecCmdAndWait(amdxdna_drm_exec_cmd *exec_cmd, uint32_
   // Waiting for command to finish
   amdxdna_drm_wait_cmd wait_cmd = {};
   wait_cmd.hwctx = hw_ctx_handle;
-  wait_cmd.timeout = 50; // 50ms timeout
+  wait_cmd.timeout = TIMEOUT_VAL; 
   wait_cmd.seq = exec_cmd->seq;
 
   if (ioctl(fd, DRM_IOCTL_AMDXDNA_WAIT_CMD, &wait_cmd))
@@ -242,13 +268,12 @@ void AieAqlQueue::RegisterCmdBOs(uint32_t count, std::vector<uint32_t> &bo_args,
   // This is the index where the operand addresses start in a command
   const int operand_starting_index = 5;
 
-  // We have 6 arguments of the packet before we start passing operands
-  // and operands are 64-bits so we need to divide by two
-  constexpr int non_operand_count = 6;
-  uint32_t num_operands = (count - non_operand_count) / 2;
+  // Counting the number of operands in the command payload.
+  // Operands are 64-bits so we need to divide by two
+  uint32_t num_operands = (count - NON_OPERAND_COUNT) / 2;
 
   // Keep track of the handles before we submit the packet
-  bo_args.push_back(cmd_pkt_payload->data[2]); // we know element 2 is the instruction sequence
+  bo_args.push_back(cmd_pkt_payload->data[CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_IDX]); 
 
 
   // Going through all of the operands in the command, keeping track of the 
@@ -261,8 +286,8 @@ void AieAqlQueue::RegisterCmdBOs(uint32_t count, std::vector<uint32_t> &bo_args,
     cmd_pkt_payload->data[operand_starting_index + 2 * operand_iter     ] = (uint64_t)vmem_handle_mappings[cmd_pkt_payload->data[operand_starting_index + 2 * operand_iter]] & 0xFFFFFFFF;
   }
   
-  // We know data[2] is the DPU
-  cmd_pkt_payload->data[2] = 0x04000000 | (reinterpret_cast<uint64_t>(vmem_handle_mappings[cmd_pkt_payload->data[2]]) & 0x02FFFFFF);
+  // Transform the instruction sequence address into device address
+  cmd_pkt_payload->data[CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_IDX] = DEV_ADDR_BASE | (reinterpret_cast<uint64_t>(vmem_handle_mappings[cmd_pkt_payload->data[CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_IDX]]) & DEV_ADDR_OFFSET_MASK);
 
   return;
 }
@@ -272,7 +297,7 @@ hsa_status_t AieAqlQueue::CreateCmd(uint32_t size, uint32_t *handle,  amdxdna_cm
   // Creating the command
   amdxdna_drm_create_bo create_cmd_bo = {};
   create_cmd_bo.type = AMDXDNA_BO_CMD,
-  create_cmd_bo.size = 64;
+  create_cmd_bo.size = CMD_SIZE;
   if (ioctl(fd, DRM_IOCTL_AMDXDNA_CREATE_BO, &create_cmd_bo))
     return HSA_STATUS_ERROR;
 
@@ -281,7 +306,7 @@ hsa_status_t AieAqlQueue::CreateCmd(uint32_t size, uint32_t *handle,  amdxdna_cm
   if (ioctl(fd, DRM_IOCTL_AMDXDNA_GET_BO_INFO, &cmd_bo_get_bo_info))
     return HSA_STATUS_ERROR;
 
-  *cmd = static_cast<amdxdna_cmd  *>(mmap(0, 64, PROT_READ | PROT_WRITE, MAP_SHARED, fd, cmd_bo_get_bo_info.map_offset));
+  *cmd = static_cast<amdxdna_cmd  *>(mmap(0, create_cmd_bo.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, cmd_bo_get_bo_info.map_offset));
   *handle = create_cmd_bo.handle;
 
   return HSA_STATUS_SUCCESS;
@@ -290,7 +315,7 @@ hsa_status_t AieAqlQueue::CreateCmd(uint32_t size, uint32_t *handle,  amdxdna_cm
 hsa_status_t AieAqlQueue::SubmitCmd(uint32_t hw_ctx_handle, int fd, void *queue_base, uint64_t read_dispatch_id, uint64_t write_dispatch_id, std::unordered_map<uint32_t, void*> &vmem_handle_mappings) {
 
   // This is the index where the operand addresses start in a command
-  const int operand_starting_index = 5;
+  const int operand_starting_index = NON_OPERAND_COUNT - 1;
 
   uint64_t cur_id = read_dispatch_id;
   while (cur_id < write_dispatch_id) {
@@ -313,12 +338,10 @@ hsa_status_t AieAqlQueue::SubmitCmd(uint32_t hw_ctx_handle, int fd, void *queue_
         int num_cont_start_cu_pkts = 1;
         for (int peak_pkt_id = cur_id + 1; peak_pkt_id < write_dispatch_id; peak_pkt_id++) {
           hsa_amd_aie_ert_packet_t *peak_pkt = static_cast<hsa_amd_aie_ert_packet_t *>(queue_base) + peak_pkt_id;
-          if (pkt->opcode == HSA_AMD_AIE_ERT_START_CU) {
-            num_cont_start_cu_pkts++;
-          }
-          else {
+          if (pkt->opcode != HSA_AMD_AIE_ERT_START_CU) {
             break;
           }
+          num_cont_start_cu_pkts++;
         }
 
         // Iterating over all of the contigous HSA_AMD_AIE_ERT_CMD_CHAIN packets
@@ -347,7 +370,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(uint32_t hw_ctx_handle, int fd, void *queue_
           // beginning
           // TODO: Look more into this
           if (pkt_iter == cur_id) {
-            cmd->count = pkt->count + 5;
+            cmd->count = pkt->count + FIRST_CMD_COUNT_SIZE_INCREASE;
           }
           else {
             cmd->count = pkt->count;    
@@ -363,7 +386,8 @@ hsa_status_t AieAqlQueue::SubmitCmd(uint32_t hw_ctx_handle, int fd, void *queue_
         // Creating a packet that contains the command chain
         uint32_t cmd_chain_bo_handle = 0;
         amdxdna_cmd *cmd_chain = nullptr;
-        if (CreateCmd(4096, &cmd_chain_bo_handle, &cmd_chain, fd))
+        int cmd_chain_size = (cmd_handles.size() + 1) * sizeof(uint32_t);
+        if (CreateCmd(cmd_chain_size, &cmd_chain_bo_handle, &cmd_chain, fd))
           return HSA_STATUS_ERROR;
 
         // Writing information to the command buffer
@@ -372,7 +396,8 @@ hsa_status_t AieAqlQueue::SubmitCmd(uint32_t hw_ctx_handle, int fd, void *queue_
         // Creating a command chain
         cmd_chain->state = HSA_AMD_AIE_ERT_STATE_NEW;
         cmd_chain->extra_cu_masks = 0;
-        cmd_chain->count = 0xA;   // TODO: Figure out why this is the value
+        // TODO: Figure out why this is the value
+        cmd_chain->count = 0xA;   
         cmd_chain->opcode = HSA_AMD_AIE_ERT_CMD_CHAIN;
         cmd_chain_payload->command_count = cmd_handles.size();
         cmd_chain_payload->submit_index = 0;
@@ -414,7 +439,6 @@ hsa_status_t AieAqlQueue::SubmitCmd(uint32_t hw_ctx_handle, int fd, void *queue_
       }
       default: {
         return HSA_STATUS_ERROR;
-        break;
       }
         
     }
