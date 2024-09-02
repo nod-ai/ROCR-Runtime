@@ -163,7 +163,7 @@ private:
   /// @brief Base of the queue's ring buffer storage.
   void *ring_buf_ = nullptr;
 
-  hsa_status_t AieAqlQueue::SubmitCmd(uint32_t hw_ctx_handle, int fd, void *queue_base, 
+  hsa_status_t SubmitCmd(uint32_t hw_ctx_handle, int fd, void *queue_base,
                                       uint64_t read_dispatch_id, uint64_t write_dispatch_id, 
                                       std::unordered_map<uint32_t, void*> &vmem_handle_mappings);
 
