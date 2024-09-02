@@ -47,19 +47,14 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <sys/syscall.h>
-#include <unistd.h>
 #include <sys/ioctl.h>
-#include <sys/mman.h>
 #endif
 
 #ifdef _WIN32
 #include <Windows.h>
 #endif
 
-#include <stdio.h>
-#include <string.h>
-#include <thread>
+#include <cstring>
 
 #include "core/inc/queue.h"
 #include "core/inc/runtime.h"
@@ -135,7 +130,7 @@ AieAqlQueue::AieAqlQueue(AieAgent *agent, size_t req_size_pkts,
       .CreateQueue(*this);
 }
 
-AieAqlQueue::~AieAqlQueue() { Inactivate(); }
+AieAqlQueue::~AieAqlQueue() { AieAqlQueue::Inactivate(); }
 
 hsa_status_t AieAqlQueue::Inactivate() {
   bool active(active_.exchange(false, std::memory_order_relaxed));
@@ -225,20 +220,28 @@ uint64_t AieAqlQueue::AddWriteIndexAcqRel(uint64_t value) {
 
 void AieAqlQueue::StoreRelaxed(hsa_signal_value_t value) {
   std::unordered_map<uint32_t, void*> vmem_handle_mappings;
-  if(static_cast<XdnaDriver&>(core::Runtime::runtime_singleton_->AgentDriver(agent_.driver_type)).GetHandleMappings(vmem_handle_mappings) != HSA_STATUS_SUCCESS)
+  if (reinterpret_cast<XdnaDriver &>(
+          core::Runtime::runtime_singleton_->AgentDriver(agent_.driver_type))
+          .GetHandleMappings(vmem_handle_mappings) != HSA_STATUS_SUCCESS) {
     return;
+  }
 
   int fd = 0;
-  if(static_cast<XdnaDriver&>(core::Runtime::runtime_singleton_->AgentDriver(agent_.driver_type)).GetFd(fd) != HSA_STATUS_SUCCESS)
+  if (reinterpret_cast<XdnaDriver &>(
+          core::Runtime::runtime_singleton_->AgentDriver(agent_.driver_type))
+          .GetFd(fd) != HSA_STATUS_SUCCESS) {
     return;
+  }
 
-  SubmitCmd(hw_ctx_handle_, fd, amd_queue_.hsa_queue.base_address, amd_queue_.read_dispatch_id, amd_queue_.write_dispatch_id, vmem_handle_mappings);
+  SubmitCmd(hw_ctx_handle_, fd, amd_queue_.hsa_queue.base_address,
+            amd_queue_.read_dispatch_id, amd_queue_.write_dispatch_id,
+            vmem_handle_mappings);
 }
 
 hsa_status_t AieAqlQueue::SyncBos(std::vector<uint32_t> &bo_args, int fd) {
-  for (int i = 0 ; i < bo_args.size(); i++) {
+  for (unsigned int bo_arg : bo_args) {
     amdxdna_drm_sync_bo sync_params = {};
-    sync_params.handle = bo_args[i];
+    sync_params.handle = bo_arg;
     if (ioctl(fd, DRM_IOCTL_AMDXDNA_SYNC_BO, &sync_params))
       return HSA_STATUS_ERROR;
   }
@@ -246,7 +249,8 @@ hsa_status_t AieAqlQueue::SyncBos(std::vector<uint32_t> &bo_args, int fd) {
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t AieAqlQueue::ExecCmdAndWait(amdxdna_drm_exec_cmd *exec_cmd, uint32_t hw_ctx_handle, int fd) {
+hsa_status_t AieAqlQueue::ExecCmdAndWait(amdxdna_drm_exec_cmd *exec_cmd,
+                                         uint32_t hw_ctx_handle, int fd) {
   // Submit the cmd
   if (ioctl(fd, DRM_IOCTL_AMDXDNA_EXEC_CMD, exec_cmd))
     return HSA_STATUS_ERROR;
@@ -263,8 +267,10 @@ hsa_status_t AieAqlQueue::ExecCmdAndWait(amdxdna_drm_exec_cmd *exec_cmd, uint32_
   return HSA_STATUS_SUCCESS;
 }
 
-void AieAqlQueue::RegisterCmdBOs(uint32_t count, std::vector<uint32_t> &bo_args, hsa_amd_aie_ert_start_kernel_data_t *cmd_pkt_payload, std::unordered_map<uint32_t, void*> &vmem_handle_mappings) {
-
+void AieAqlQueue::RegisterCmdBOs(
+    uint32_t count, std::vector<uint32_t> &bo_args,
+    hsa_amd_aie_ert_start_kernel_data_t *cmd_pkt_payload,
+    std::unordered_map<uint32_t, void *> &vmem_handle_mappings) {
   // This is the index where the operand addresses start in a command
   const int operand_starting_index = 5;
 
@@ -275,25 +281,33 @@ void AieAqlQueue::RegisterCmdBOs(uint32_t count, std::vector<uint32_t> &bo_args,
   // Keep track of the handles before we submit the packet
   bo_args.push_back(cmd_pkt_payload->data[CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_IDX]); 
 
-
-  // Going through all of the operands in the command, keeping track of the 
+  // Going through all of the operands in the command, keeping track of the
   // handles and turning the handles into addresses. The starting index of
   // the operands in a command is `operand_starting_index` and the fields
   // are 32-bits we need to iterate over every two
   for (int operand_iter = 0; operand_iter < num_operands; operand_iter++) {
-    bo_args.push_back(cmd_pkt_payload->data[operand_starting_index + 2 * operand_iter]);
-    cmd_pkt_payload->data[operand_starting_index + 2 * operand_iter + 1 ] = ((uint64_t)vmem_handle_mappings[cmd_pkt_payload->data[operand_starting_index + 2 * operand_iter]] >> 32) & 0xFFFFFFFF;
-    cmd_pkt_payload->data[operand_starting_index + 2 * operand_iter     ] = (uint64_t)vmem_handle_mappings[cmd_pkt_payload->data[operand_starting_index + 2 * operand_iter]] & 0xFFFFFFFF;
+    bo_args.push_back(
+        cmd_pkt_payload->data[operand_starting_index + 2 * operand_iter]);
+    // clang-format off
+    cmd_pkt_payload->data[operand_starting_index + 2 * operand_iter + 1] =
+        (uint64_t)vmem_handle_mappings[cmd_pkt_payload->data[operand_starting_index + 2 * operand_iter]] >> 32 & 0xFFFFFFFF;
+    cmd_pkt_payload->data[operand_starting_index + 2 * operand_iter] =
+        (uint64_t)vmem_handle_mappings[cmd_pkt_payload->data[operand_starting_index + 2 * operand_iter]] & 0xFFFFFFFF;
+    // clang-format on
   }
-  
-  // Transform the instruction sequence address into device address
-  cmd_pkt_payload->data[CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_IDX] = DEV_ADDR_BASE | (reinterpret_cast<uint64_t>(vmem_handle_mappings[cmd_pkt_payload->data[CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_IDX]]) & DEV_ADDR_OFFSET_MASK);
 
-  return;
+  // Transform the instruction sequence address into device address
+  cmd_pkt_payload->data[CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_IDX] =
+      DEV_ADDR_BASE |
+      (reinterpret_cast<uint64_t>(
+           vmem_handle_mappings
+               [cmd_pkt_payload
+                    ->data[CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_IDX]]) &
+       DEV_ADDR_OFFSET_MASK);
 }
 
-hsa_status_t AieAqlQueue::CreateCmd(uint32_t size, uint32_t *handle,  amdxdna_cmd **cmd, int fd) {
-
+hsa_status_t AieAqlQueue::CreateCmd(uint32_t size, uint32_t *handle,
+                                    amdxdna_cmd **cmd, int fd) {
   // Creating the command
   amdxdna_drm_create_bo create_cmd_bo = {};
   create_cmd_bo.type = AMDXDNA_BO_CMD,
@@ -306,24 +320,26 @@ hsa_status_t AieAqlQueue::CreateCmd(uint32_t size, uint32_t *handle,  amdxdna_cm
   if (ioctl(fd, DRM_IOCTL_AMDXDNA_GET_BO_INFO, &cmd_bo_get_bo_info))
     return HSA_STATUS_ERROR;
 
-  *cmd = static_cast<amdxdna_cmd  *>(mmap(0, create_cmd_bo.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, cmd_bo_get_bo_info.map_offset));
+  *cmd = static_cast<amdxdna_cmd *>(mmap(nullptr, create_cmd_bo.size,
+                                         PROT_READ | PROT_WRITE, MAP_SHARED, fd,
+                                         cmd_bo_get_bo_info.map_offset));
   *handle = create_cmd_bo.handle;
 
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t AieAqlQueue::SubmitCmd(uint32_t hw_ctx_handle, int fd, void *queue_base, uint64_t read_dispatch_id, uint64_t write_dispatch_id, std::unordered_map<uint32_t, void*> &vmem_handle_mappings) {
-
-  // This is the index where the operand addresses start in a command
-  const int operand_starting_index = NON_OPERAND_COUNT - 1;
-
+hsa_status_t AieAqlQueue::SubmitCmd(
+    uint32_t hw_ctx_handle, int fd, void *queue_base, uint64_t read_dispatch_id,
+    uint64_t write_dispatch_id,
+    std::unordered_map<uint32_t, void *> &vmem_handle_mappings) {
   uint64_t cur_id = read_dispatch_id;
   while (cur_id < write_dispatch_id) {
-      
-    hsa_amd_aie_ert_packet_t *pkt = static_cast<hsa_amd_aie_ert_packet_t *>(queue_base) + cur_id;
+    hsa_amd_aie_ert_packet_t *pkt =
+        static_cast<hsa_amd_aie_ert_packet_t *>(queue_base) + cur_id;
 
     // Get the packet header information
-    if (pkt->header.header != HSA_PACKET_TYPE_VENDOR_SPECIFIC || pkt->header.AmdFormat != HSA_AMD_PACKET_TYPE_AIE_ERT)
+    if (pkt->header.header != HSA_PACKET_TYPE_VENDOR_SPECIFIC ||
+        pkt->header.AmdFormat != HSA_AMD_PACKET_TYPE_AIE_ERT)
       return HSA_STATUS_ERROR;
 
     // Get the payload information
@@ -333,26 +349,28 @@ hsa_status_t AieAqlQueue::SubmitCmd(uint32_t hw_ctx_handle, int fd, void *queue_
         std::vector<uint32_t> bo_args;
         std::vector<uint32_t> cmd_handles;
 
-        // Iterating over future packets and seeing how many contigous HSA_AMD_AIE_ERT_START_CU 
+        // Iterating over future packets and seeing how many contiguous HSA_AMD_AIE_ERT_START_CU
         // packets there are. All can be combined into a single chain.
         int num_cont_start_cu_pkts = 1;
         for (int peak_pkt_id = cur_id + 1; peak_pkt_id < write_dispatch_id; peak_pkt_id++) {
-          hsa_amd_aie_ert_packet_t *peak_pkt = static_cast<hsa_amd_aie_ert_packet_t *>(queue_base) + peak_pkt_id;
           if (pkt->opcode != HSA_AMD_AIE_ERT_START_CU) {
             break;
           }
           num_cont_start_cu_pkts++;
         }
 
-        // Iterating over all of the contigous HSA_AMD_AIE_ERT_CMD_CHAIN packets
+        // Iterating over all the contiguous HSA_AMD_AIE_ERT_CMD_CHAIN packets
         for (int pkt_iter = cur_id; pkt_iter < cur_id + num_cont_start_cu_pkts; pkt_iter++) {
 
           // Getting the current command packet
-          hsa_amd_aie_ert_packet_t *pkt = static_cast<hsa_amd_aie_ert_packet_t *>(queue_base) + pkt_iter;
-          hsa_amd_aie_ert_start_kernel_data_t *cmd_pkt_payload = reinterpret_cast<hsa_amd_aie_ert_start_kernel_data_t *>(pkt->payload_data);
+          hsa_amd_aie_ert_packet_t *pkt =
+              static_cast<hsa_amd_aie_ert_packet_t *>(queue_base) + pkt_iter;
+          hsa_amd_aie_ert_start_kernel_data_t *cmd_pkt_payload =
+              reinterpret_cast<hsa_amd_aie_ert_start_kernel_data_t *>(
+                  pkt->payload_data);
 
-          // Add the handles for all of the BOs to bo_args as well as rewrite the command 
-          // payload handles to contain the actual virtual addresses
+          // Add the handles for all of the BOs to bo_args as well as rewrite
+          // the command payload handles to contain the actual virtual addresses
           RegisterCmdBOs(pkt->count, bo_args, cmd_pkt_payload, vmem_handle_mappings);
 
           // Creating a packet that contains the command to execute the kernel
@@ -362,18 +380,18 @@ hsa_status_t AieAqlQueue::SubmitCmd(uint32_t hw_ctx_handle, int fd, void *queue_
             return HSA_STATUS_ERROR;
 
           // Filling in the fields of the command
-          cmd->state = pkt->state; 
-          cmd->extra_cu_masks = 0;  
+          cmd->state = pkt->state;
+          cmd->extra_cu_masks = 0;
 
           // For some reason the first count needs to be a little larger than
-          // it actually is, assuming there is some other data structure at the 
+          // it actually is, assuming there is some other data structure at the
           // beginning
           // TODO: Look more into this
           if (pkt_iter == cur_id) {
             cmd->count = pkt->count + FIRST_CMD_COUNT_SIZE_INCREASE;
           }
           else {
-            cmd->count = pkt->count;    
+            cmd->count = pkt->count;
           }
           cmd->opcode = pkt->opcode;
           cmd->data[0] = cmd_pkt_payload->cu_mask;
@@ -397,7 +415,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(uint32_t hw_ctx_handle, int fd, void *queue_
         cmd_chain->state = HSA_AMD_AIE_ERT_STATE_NEW;
         cmd_chain->extra_cu_masks = 0;
         // TODO: Figure out why this is the value
-        cmd_chain->count = 0xA;   
+        cmd_chain->count = 0xA;
         cmd_chain->opcode = HSA_AMD_AIE_ERT_CMD_CHAIN;
         cmd_chain_payload->command_count = cmd_handles.size();
         cmd_chain_payload->submit_index = 0;
@@ -411,7 +429,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(uint32_t hw_ctx_handle, int fd, void *queue_
           return HSA_STATUS_ERROR;
 
         // Removing duplicates in the bo container. The driver will report
-        // an error if we provide the same BO handle multiple times. 
+        // an error if we provide the same BO handle multiple times.
         // This can happen if any of the BOs are the same across jobs
         std::sort(bo_args.begin(), bo_args.end());
         bo_args.erase(std::unique(bo_args.begin(), bo_args.end()), bo_args.end());
@@ -423,7 +441,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(uint32_t hw_ctx_handle, int fd, void *queue_
         exec_cmd_0.hwctx = hw_ctx_handle;
         exec_cmd_0.type = AMDXDNA_CMD_SUBMIT_EXEC_BUF;
         exec_cmd_0.cmd_handles = cmd_chain_bo_handle;
-        exec_cmd_0.args = (__u64)bo_args.data();
+        exec_cmd_0.args = (uint64_t)bo_args.data();
         exec_cmd_0.cmd_count = 1;
         exec_cmd_0.arg_count = bo_args.size();
 
@@ -440,9 +458,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(uint32_t hw_ctx_handle, int fd, void *queue_
       default: {
         return HSA_STATUS_ERROR;
       }
-        
     }
-
   }
 
   return HSA_STATUS_SUCCESS;
@@ -456,16 +472,16 @@ void AieAqlQueue::StoreRelease(hsa_signal_value_t value) {
 hsa_status_t AieAqlQueue::GetInfo(hsa_queue_info_attribute_t attribute,
                                   void *value) {
   switch (attribute) {
-  case HSA_AMD_QUEUE_INFO_AGENT:
-    *(reinterpret_cast<hsa_agent_t *>(value)) = agent_.public_handle();
-    break;
-  case HSA_AMD_QUEUE_INFO_DOORBELL_ID:
-    // Hardware doorbell supports AQL semantics.
-    *(reinterpret_cast<uint64_t *>(value)) =
-        reinterpret_cast<uint64_t>(signal_.hardware_doorbell_ptr);
-    break;
-  default:
-    return HSA_STATUS_ERROR_INVALID_ARGUMENT;
+    case HSA_AMD_QUEUE_INFO_AGENT:
+      *static_cast<hsa_agent_t *>(value) = agent_.public_handle();
+      break;
+    case HSA_AMD_QUEUE_INFO_DOORBELL_ID:
+      // Hardware doorbell supports AQL semantics.
+      *static_cast<uint64_t *>(value) =
+          reinterpret_cast<uint64_t>(signal_.hardware_doorbell_ptr);
+      break;
+    default:
+      return HSA_STATUS_ERROR_INVALID_ARGUMENT;
   }
   return HSA_STATUS_SUCCESS;
 }
