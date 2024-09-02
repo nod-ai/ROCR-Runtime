@@ -130,10 +130,6 @@ private:
   void *dev_heap_aligned = nullptr;
   static constexpr size_t dev_heap_size = 48 * 1024 * 1024;
   static constexpr size_t dev_heap_align = 64 * 1024 * 1024;
-
-  /// @brief DRM buffer object handle for the device heap. Assigned by the
-  ///        kernel-mode driver.
-  uint32_t dev_heap_handle = 0;
 };
 
 } // namespace AMD
