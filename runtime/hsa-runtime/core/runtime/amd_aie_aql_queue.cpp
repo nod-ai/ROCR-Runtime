@@ -90,7 +90,7 @@ constexpr int CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_IDX = 2;
 constexpr const char *TIMEOUT_ENV_VAR = "ROCR_AIE_TIMEOUT";
 constexpr int DEFAULT_TIMEOUT_VAL = 50;
 char *timeout_env_var_ptr = getenv(TIMEOUT_ENV_VAR);
-int TIMEOUT_VAL = timeout_env_var_ptr == nullptr ? DEFAULT_TIMEOUT_VAL : atoi(timeout_env_var_ptr);
+int timeout_val = timeout_env_var_ptr == nullptr ? DEFAULT_TIMEOUT_VAL : atoi(timeout_env_var_ptr);
 
 namespace rocr {
 namespace AMD {
@@ -254,7 +254,7 @@ hsa_status_t AieAqlQueue::ExecCmdAndWait(amdxdna_drm_exec_cmd *exec_cmd, uint32_
   // Waiting for command to finish
   amdxdna_drm_wait_cmd wait_cmd = {};
   wait_cmd.hwctx = hw_ctx_handle;
-  wait_cmd.timeout = TIMEOUT_VAL; 
+  wait_cmd.timeout = timeout_val; 
   wait_cmd.seq = exec_cmd->seq;
 
   if (ioctl(fd, DRM_IOCTL_AMDXDNA_WAIT_CMD, &wait_cmd))
