@@ -1,4 +1,5 @@
 find_package(hsa-runtime64 CONFIG REQUIRED NAMES hsa_runtime64 hsa-runtime64)
+message(STATUS "using hsa-runtime64 @ ${hsa-runtime64_CONFIG}")
 
 # smoke test
 add_executable(aie_hsa_bare_add_one aie_hsa_bare_add_one.cc)
