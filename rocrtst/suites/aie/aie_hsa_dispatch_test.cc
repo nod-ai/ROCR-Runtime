@@ -192,7 +192,8 @@ int main(int argc, char **argv) {
   // Getting the maximum size of the queue so we can submit that many consecutive
   // packets.
   uint32_t aie_max_queue_size;
-  hsa_agent_get_info(aie_agent, HSA_AGENT_INFO_QUEUE_MAX_SIZE, &aie_max_queue_size);
+  r = hsa_agent_get_info(aie_agent, HSA_AGENT_INFO_QUEUE_MAX_SIZE, &aie_max_queue_size);
+  assert(r == HSA_STATUS_SUCCESS);
   int num_pkts = aie_max_queue_size;
 
   // Load the DPU and PDI files into a global pool that doesn't support kernel
@@ -262,7 +263,7 @@ int main(int argc, char **argv) {
     packet_id = wr_idx % aie_queue->size;
 
     // Creating a packet to store the command
-    hsa_amd_aie_ert_packet_t *cmd_pkt = reinterpret_cast<hsa_amd_aie_ert_packet_t *>(
+    hsa_amd_aie_ert_packet_t *cmd_pkt = static_cast<hsa_amd_aie_ert_packet_t *>(
         aie_queue->base_address) + packet_id;
     assert(r == HSA_STATUS_SUCCESS);
     cmd_pkt->state = HSA_AMD_AIE_ERT_STATE_NEW;
