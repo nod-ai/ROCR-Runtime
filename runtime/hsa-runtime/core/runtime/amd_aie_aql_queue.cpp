@@ -70,6 +70,10 @@ constexpr int DEV_ADDR_OFFSET_MASK = 0x02FFFFFF;
 
 // The driver places a structure before each command in a command chain.
 // Need to increase the size of the command by the size of this structure.
+// In the following xdna driver source can see where this is implemented:
+// Commit hash: eddd92c0f61592c576a500f16efa24eb23667c23
+// https://github.com/amd/xdna-driver/blob/main/src/driver/amdxdna/aie2_msg_priv.h#L387-L391
+// https://github.com/amd/xdna-driver/blob/main/src/driver/amdxdna/aie2_message.c#L637
 constexpr int CMD_COUNT_SIZE_INCREASE = 3;
 
 // Index of command payload where the instruction sequence 
