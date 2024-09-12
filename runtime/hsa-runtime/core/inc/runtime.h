@@ -816,8 +816,6 @@ class Runtime {
 
   struct MappedHandle;
   struct MappedHandleAllowedAgent {
-    MappedHandleAllowedAgent()
-        : va(NULL), permissions(HSA_ACCESS_PERMISSION_NONE), mappedHandle(NULL), ldrm_bo(0) {}
     MappedHandleAllowedAgent(MappedHandle* _mappedHandle, Agent* targetAgent, void* va, size_t size,
                              hsa_access_permission_t perms);
     ~MappedHandleAllowedAgent();
@@ -834,16 +832,6 @@ class Runtime {
   };
 
   struct MappedHandle {
-    MappedHandle()
-        : mem_handle(NULL),
-          address_handle(NULL),
-          offset(0),
-          mmap_offset(0),
-          size(0),
-          drm_fd(-1),
-          drm_cpu_addr(NULL),
-          ldrm_bo(0) {}
-
     MappedHandle(MemoryHandle* mem_handle, AddressHandle* address_handle, uint64_t offset,
                  size_t size, int drm_fd, void* drm_cpu_addr, hsa_access_permission_t perm,
                  amdgpu_bo_handle bo)

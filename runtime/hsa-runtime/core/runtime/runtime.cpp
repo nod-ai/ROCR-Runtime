@@ -3413,14 +3413,14 @@ hsa_status_t Runtime::VMemorySetAccess(void* va, size_t size,
       auto agentPermsIt = mappedHandleIt.second->allowed_agents.find(targetAgent);
       if (agentPermsIt == mappedHandleIt.second->allowed_agents.end()) {
         /* Agent not previously allowed, we need a new entry */
-        mappedHandleIt.second->allowed_agents.emplace(
+        auto result = mappedHandleIt.second->allowed_agents.emplace(
             std::piecewise_construct, std::forward_as_tuple(targetAgent),
-            std::forward_as_tuple(mappedHandleIt.second, targetAgent, mappedHandleIt.first, size,
+            std::forward_as_tuple(mappedHandleIt.second, targetAgent,
+                                  mappedHandleIt.first, size,
                                   desc[i].permissions));
-
-        if (mappedHandleIt.second->allowed_agents[targetAgent].EnableAccess(desc[i].permissions) !=
-            HSA_STATUS_SUCCESS) {
-          mappedHandleIt.second->allowed_agents.erase(targetAgent);
+        auto agentIt = result.first;
+        if (agentIt->second.EnableAccess(desc[i].permissions) != HSA_STATUS_SUCCESS) {
+          mappedHandleIt.second->allowed_agents.erase(agentIt);
           return HSA_STATUS_ERROR;
         }
       } else {
