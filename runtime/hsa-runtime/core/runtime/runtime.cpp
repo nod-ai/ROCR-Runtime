@@ -881,9 +881,14 @@ hsa_status_t Runtime::InteropMap(uint32_t num_agents, Agent** agents,
     if (num_agents > tinyArraySize) delete[] nodes;
   });
 
-  for (uint32_t i = 0; i < num_agents; i++)
-    agents[i]->GetInfo((hsa_agent_info_t)HSA_AMD_AGENT_INFO_DRIVER_NODE_ID,
-                       &nodes[i]);
+  for (uint32_t i = 0; i < num_agents; i++) {
+    const auto &agent = *agents[i];
+    if (agent.driver_type == DriverType::XDNA)
+      return HSA_STATUS_ERROR_INVALID_AGENT;
+    agent.GetInfo(
+        static_cast<hsa_agent_info_t>(HSA_AMD_AGENT_INFO_DRIVER_NODE_ID),
+        &nodes[i]);
+  }
 
   if (hsaKmtRegisterGraphicsHandleToNodes(interop_handle, &info, num_agents,
                                           nodes) != HSAKMT_STATUS_SUCCESS)
