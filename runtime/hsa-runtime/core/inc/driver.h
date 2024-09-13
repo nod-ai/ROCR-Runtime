@@ -48,6 +48,7 @@
 
 #include "core/inc/memory_region.h"
 #include "inc/hsa.h"
+#include "inc/hsa_ext_amd.h"
 
 namespace rocr {
 namespace core {
@@ -74,6 +75,9 @@ class Driver {
   Driver(DriverType kernel_driver_type, std::string devnode_name);
   virtual ~Driver() = default;
 
+  /// @brief Initialize the driver's state after opening.
+  virtual hsa_status_t Init() = 0;
+
   /// @brief Query the kernel-model driver.
   /// @retval HSA_STATUS_SUCCESS if the kernel-model driver query was
   /// successful.
@@ -90,6 +94,13 @@ class Driver {
   /// @brief Get driver version information.
   /// @retval DriverVersionInfo containing the driver's version information.
   const DriverVersionInfo &Version() const { return version_; }
+
+  /// @brief Get the properties of a specific agent and initialize the agent
+  /// object.
+  /// @param agent Agent whose properties we're getting.
+  /// @retval HSA_STATUS_SUCCESS if the driver successfully returns the agent's
+  ///         properties.
+  virtual hsa_status_t GetAgentProperties(Agent &agent) const = 0;
 
   /// @brief Get the memory properties of a specific node.
   /// @param node_id Node ID of the agent
@@ -113,9 +124,21 @@ class Driver {
 
   virtual hsa_status_t FreeMemory(void *mem, size_t size) = 0;
 
-  virtual hsa_status_t CreateQueue(Queue &queue) = 0;
+  virtual hsa_status_t CreateQueue(Queue &queue) const = 0;
 
   virtual hsa_status_t DestroyQueue(Queue &queue) const = 0;
+
+  /// @brief Configure the hardware context for a queue.
+  /// @param[in] queue The queue whose context is being configured.
+  /// @param[in] config_type Type for the @p args argument. Tells the driver
+  ///            how to interpret the args.
+  /// @param[in] args Arguments for configuring the queue's hardware context.
+  ///            @p config_type tells how to interpret args.
+  virtual hsa_status_t
+  ConfigHwCtx(Queue &queue, hsa_amd_queue_hw_ctx_config_param_t config_type,
+              void *args) = 0;
+
+  virtual hsa_status_t GetHandleFromVaddr(void* ptr, uint32_t* handle) = 0;
 
   /// Unique identifier for supported kernel-mode drivers.
   const DriverType kernel_driver_type_;

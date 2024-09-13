@@ -66,7 +66,9 @@ public:
 
   static hsa_status_t DiscoverDriver();
 
+  hsa_status_t Init() override;
   hsa_status_t QueryKernelModeDriver(core::DriverQuery query) override;
+  hsa_status_t GetAgentProperties(core::Agent &agent) const override;
   hsa_status_t
   GetMemoryProperties(uint32_t node_id,
                       core::MemoryRegion &mem_region) const override;
@@ -75,8 +77,12 @@ public:
                               void **mem, size_t size,
                               uint32_t node_id) override;
   hsa_status_t FreeMemory(void *mem, size_t size) override;
-  hsa_status_t CreateQueue(core::Queue &queue) override;
+  hsa_status_t CreateQueue(core::Queue &queue) const override;
   hsa_status_t DestroyQueue(core::Queue &queue) const override;
+  hsa_status_t ConfigHwCtx(core::Queue &queue,
+                           hsa_amd_queue_hw_ctx_config_param_t config_type,
+                           void *args) override;
+  hsa_status_t GetHandleFromVaddr(void* ptr, uint32_t* handle) override;
 
 private:
   /// @brief Allocate agent accessible memory (system / local memory).
