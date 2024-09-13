@@ -837,7 +837,6 @@ class Runtime {
         : mem_handle(mem_handle),
           address_handle(address_handle),
           offset(offset),
-          mmap_offset(0),
           size(size),
           drm_fd(drm_fd),
           drm_cpu_addr(drm_cpu_addr),
@@ -848,7 +847,6 @@ class Runtime {
     MemoryHandle* mem_handle;
     AddressHandle* address_handle;
     uint64_t offset;
-    uint64_t mmap_offset;
     size_t size;
     int drm_fd;
     void* drm_cpu_addr;  // CPU Buffer address
