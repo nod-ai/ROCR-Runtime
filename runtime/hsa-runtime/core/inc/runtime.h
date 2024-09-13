@@ -787,7 +787,6 @@ class Runtime {
   std::map<const void*, AddressHandle> reserved_address_map_;  // Indexed by VA
 
   struct MemoryHandle {
-    MemoryHandle() : region(NULL), size(0), ref_count(0), thunk_handle(NULL), alloc_flag(0) {}
     MemoryHandle(const MemoryRegion* region, size_t size, uint64_t flags_unused,
                  ThunkHandle thunk_handle, MemoryRegion::AllocateFlags alloc_flag)
         : region(region),
