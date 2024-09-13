@@ -68,17 +68,16 @@ constexpr int NON_OPERAND_COUNT = 6;
 constexpr int DEV_ADDR_BASE = 0x04000000;
 constexpr int DEV_ADDR_OFFSET_MASK = 0x02FFFFFF;
 
-// BO size allocated for commands
-constexpr int CMD_SIZE = 64;
+// The driver places a structure before each command in a command chain.
+// Need to increase the size of the command by the size of this structure.
+// In the following xdna driver source can see where this is implemented:
+// Commit hash: eddd92c0f61592c576a500f16efa24eb23667c23
+// https://github.com/amd/xdna-driver/blob/main/src/driver/amdxdna/aie2_msg_priv.h#L387-L391
+// https://github.com/amd/xdna-driver/blob/main/src/driver/amdxdna/aie2_message.c#L637
+constexpr int CMD_COUNT_SIZE_INCREASE = 3;
 
-// This is a temp workaround. For some reason the first command count in a chain
-// needs to be a larger than it actually is, assuming there is some other data 
-// structure at the beginning
-// TODO: Look more into this
-constexpr int FIRST_CMD_COUNT_SIZE_INCREASE = 5;
-
-// Index of command payload where the instruction sequence 
-// address is located 
+// Index of command payload where the instruction sequence
+// address is located
 constexpr int CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_IDX = 2;
 
 // Environment variable to define job submission timeout
@@ -220,16 +219,15 @@ uint64_t AieAqlQueue::AddWriteIndexAcqRel(uint64_t value) {
 
 void AieAqlQueue::StoreRelaxed(hsa_signal_value_t value) {
   std::unordered_map<uint32_t, void*> vmem_handle_mappings;
-  if (reinterpret_cast<XdnaDriver &>(
-          core::Runtime::runtime_singleton_->AgentDriver(agent_.driver_type))
-          .GetHandleMappings(vmem_handle_mappings) != HSA_STATUS_SUCCESS) {
+
+  auto &driver = static_cast<XdnaDriver &>(
+      core::Runtime::runtime_singleton_->AgentDriver(agent_.driver_type));
+  if (driver.GetHandleMappings(vmem_handle_mappings) != HSA_STATUS_SUCCESS) {
     return;
   }
 
   int fd = 0;
-  if (reinterpret_cast<XdnaDriver &>(
-          core::Runtime::runtime_singleton_->AgentDriver(agent_.driver_type))
-          .GetFd(fd) != HSA_STATUS_SUCCESS) {
+  if (driver.GetFd(fd) != HSA_STATUS_SUCCESS) {
     return;
   }
 
@@ -258,7 +256,7 @@ hsa_status_t AieAqlQueue::ExecCmdAndWait(amdxdna_drm_exec_cmd *exec_cmd,
   // Waiting for command to finish
   amdxdna_drm_wait_cmd wait_cmd = {};
   wait_cmd.hwctx = hw_ctx_handle;
-  wait_cmd.timeout = timeout_val; 
+  wait_cmd.timeout = timeout_val;
   wait_cmd.seq = exec_cmd->seq;
 
   if (ioctl(fd, DRM_IOCTL_AMDXDNA_WAIT_CMD, &wait_cmd))
@@ -279,7 +277,8 @@ void AieAqlQueue::RegisterCmdBOs(
   uint32_t num_operands = (count - NON_OPERAND_COUNT) / 2;
 
   // Keep track of the handles before we submit the packet
-  bo_args.push_back(cmd_pkt_payload->data[CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_IDX]); 
+  bo_args.push_back(
+      cmd_pkt_payload->data[CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_IDX]);
 
   // Going through all of the operands in the command, keeping track of the
   // handles and turning the handles into addresses. The starting index of
@@ -311,7 +310,7 @@ hsa_status_t AieAqlQueue::CreateCmd(uint32_t size, uint32_t *handle,
   // Creating the command
   amdxdna_drm_create_bo create_cmd_bo = {};
   create_cmd_bo.type = AMDXDNA_BO_CMD,
-  create_cmd_bo.size = CMD_SIZE;
+  create_cmd_bo.size = size;
   if (ioctl(fd, DRM_IOCTL_AMDXDNA_CREATE_BO, &create_cmd_bo))
     return HSA_STATUS_ERROR;
 
@@ -345,7 +344,6 @@ hsa_status_t AieAqlQueue::SubmitCmd(
     // Get the payload information
     switch (pkt->opcode) {
       case HSA_AMD_AIE_ERT_START_CU: {
-
         std::vector<uint32_t> bo_args;
         std::vector<uint32_t> cmd_handles;
 
@@ -376,23 +374,17 @@ hsa_status_t AieAqlQueue::SubmitCmd(
           // Creating a packet that contains the command to execute the kernel
           uint32_t cmd_bo_handle = 0;
           amdxdna_cmd *cmd = nullptr;
-          if (CreateCmd(64, &cmd_bo_handle, &cmd, fd))
+          uint32_t cmd_size = sizeof(amdxdna_cmd) + pkt->count * sizeof(uint32_t);
+          if (CreateCmd(cmd_size, &cmd_bo_handle, &cmd, fd))
             return HSA_STATUS_ERROR;
 
           // Filling in the fields of the command
           cmd->state = pkt->state;
           cmd->extra_cu_masks = 0;
 
-          // For some reason the first count needs to be a little larger than
-          // it actually is, assuming there is some other data structure at the
-          // beginning
-          // TODO: Look more into this
-          if (pkt_iter == cur_id) {
-            cmd->count = pkt->count + FIRST_CMD_COUNT_SIZE_INCREASE;
-          }
-          else {
-            cmd->count = pkt->count;
-          }
+          // The driver places a structure before each command in a command chain.
+          // Need to increase the size of the command by the size of this structure.
+          cmd->count = pkt->count + CMD_COUNT_SIZE_INCREASE;
           cmd->opcode = pkt->opcode;
           cmd->data[0] = cmd_pkt_payload->cu_mask;
           memcpy((cmd->data + 1),  cmd_pkt_payload->data, 4 * pkt->count);
@@ -414,8 +406,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(
         // Creating a command chain
         cmd_chain->state = HSA_AMD_AIE_ERT_STATE_NEW;
         cmd_chain->extra_cu_masks = 0;
-        // TODO: Figure out why this is the value
-        cmd_chain->count = 0xA;
+        cmd_chain->count = sizeof(amdxdna_cmd_chain) + cmd_handles.size() * sizeof(uint64_t);
         cmd_chain->opcode = HSA_AMD_AIE_ERT_CMD_CHAIN;
         cmd_chain_payload->command_count = cmd_handles.size();
         cmd_chain_payload->submit_index = 0;
