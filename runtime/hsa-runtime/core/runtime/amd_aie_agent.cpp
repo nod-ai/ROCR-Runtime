@@ -300,6 +300,12 @@ hsa_status_t AieAgent::QueueCreate(size_t size, hsa_queue_type32_t queue_type,
   return HSA_STATUS_SUCCESS;
 }
 
+hsa_status_t AieAgent::ImportDMABuf(int dmabuf_fd, void *handle) {
+  auto &driver = static_cast<XdnaDriver &>(
+      core::Runtime::runtime_singleton_->AgentDriver(driver_type));
+  return driver.ImportDMABuf(dmabuf_fd, static_cast<uint32_t *>(handle));
+}
+
 void AieAgent::InitRegionList() {
   /// TODO: Find a way to set the other memory properties in a reasonable way.
   ///       This should be easier once the ROCt source is incorporated into the

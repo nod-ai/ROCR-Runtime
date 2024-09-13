@@ -2,24 +2,24 @@
 //
 // The University of Illinois/NCSA
 // Open Source License (NCSA)
-// 
+//
 // Copyright (c) 2014-2020, Advanced Micro Devices, Inc. All rights reserved.
-// 
+//
 // Developed by:
-// 
+//
 //                 AMD Research and AMD HSA Software Development
-// 
+//
 //                 Advanced Micro Devices, Inc.
-// 
+//
 //                 www.amd.com
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to
 // deal with the Software without restriction, including without limitation
 // the rights to use, copy, modify, merge, publish, distribute, sublicense,
 // and/or sell copies of the Software, and to permit persons to whom the
 // Software is furnished to do so, subject to the following conditions:
-// 
+//
 //  - Redistributions of source code must retain the above copyright notice,
 //    this list of conditions and the following disclaimers.
 //  - Redistributions in binary form must reproduce the above copyright
@@ -29,7 +29,7 @@
 //    nor the names of its contributors may be used to endorse or promote
 //    products derived from this Software without specific prior written
 //    permission.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
@@ -44,6 +44,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <sys/mman.h>
 #include <thread>
 
 #include "core/inc/amd_memory_region.h"
@@ -181,12 +182,12 @@ hsa_status_t CpuAgent::IterateCache(hsa_status_t (*callback)(hsa_cache_t cache, 
 }
 
 hsa_status_t CpuAgent::GetInfo(hsa_agent_info_t attribute, void* value) const {
-  
+
   // agent, and vendor name size limit
   const size_t attribute_u = static_cast<size_t>(attribute);
-  
+
   switch (attribute_u) {
-    
+
     // The code copies HsaNodeProperties.MarketingName a Unicode string
     // which is encoded in UTF-16 as a 7-bit ASCII string. The value of
     // HsaNodeProperties.MarketingName is obtained from the "model name"
@@ -415,6 +416,49 @@ hsa_status_t CpuAgent::QueueCreate(size_t size, hsa_queue_type32_t queue_type,
                                    core::Queue** queue) {
   // No HW AQL packet processor on CPU device.
   return HSA_STATUS_ERROR;
+}
+
+__forceinline int mmap_perm(hsa_access_permission_t perms) {
+  switch (perms) {
+  case HSA_ACCESS_PERMISSION_RO:
+    return PROT_READ;
+  case HSA_ACCESS_PERMISSION_WO:
+    return PROT_WRITE;
+  case HSA_ACCESS_PERMISSION_RW:
+    return PROT_READ | PROT_WRITE;
+  case HSA_ACCESS_PERMISSION_NONE:
+    return PROT_NONE;
+  default:
+    break;
+  }
+
+  return 0;
+}
+
+hsa_status_t CpuAgent::Map(void *handle, void *va, size_t offset, size_t size,
+                           int fd, hsa_access_permission_t perms) {
+  void *ret_cpu_addr =
+      mmap(va, size, mmap_perm(perms), MAP_SHARED | MAP_FIXED, fd, offset);
+  if (ret_cpu_addr != va)
+    return HSA_STATUS_ERROR;
+
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t CpuAgent::Unmap(void *handle, void *va, size_t offset,
+                             size_t size) {
+  if (munmap(va, size) != 0)
+    return HSA_STATUS_ERROR;
+
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t CpuAgent::ReleaseShareableHandle(void *handle, void *va,
+                                              size_t size) {
+  if (munmap(va, size) != 0)
+    return HSA_STATUS_ERROR;
+
+  return HSA_STATUS_SUCCESS;
 }
 
 hsa_status_t CpuAgent::DmaCopy(void* dst, core::Agent& dst_agent, const void* src,

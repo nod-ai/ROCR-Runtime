@@ -3161,40 +3161,6 @@ hsa_status_t Runtime::VMemoryHandleRelease(hsa_amd_vmem_alloc_handle_t memoryOnl
   return HSA_STATUS_SUCCESS;
 }
 
-__forceinline uint64_t drm_perm(hsa_access_permission_t perm) {
-  switch (perm) {
-    case HSA_ACCESS_PERMISSION_RO:
-      return AMDGPU_VM_PAGE_READABLE;
-    case HSA_ACCESS_PERMISSION_WO:
-      return AMDGPU_VM_PAGE_WRITEABLE;
-    case HSA_ACCESS_PERMISSION_RW:
-      return AMDGPU_VM_PAGE_READABLE | AMDGPU_VM_PAGE_WRITEABLE;
-    case HSA_ACCESS_PERMISSION_NONE:
-      return 0;
-    default:
-      break;
-  }
-
-  return 0;
-}
-
-__forceinline int mmap_perm(hsa_access_permission_t perms) {
-  switch (perms) {
-    case HSA_ACCESS_PERMISSION_RO:
-      return PROT_READ;
-    case HSA_ACCESS_PERMISSION_WO:
-      return PROT_WRITE;
-    case HSA_ACCESS_PERMISSION_RW:
-      return PROT_READ | PROT_WRITE;
-    case HSA_ACCESS_PERMISSION_NONE:
-      return PROT_NONE;
-    default:
-      break;
-  }
-
-  return 0;
-}
-
 hsa_status_t Runtime::VMemoryHandleMap(void* va, size_t size, size_t in_offset,
                                        hsa_amd_vmem_alloc_handle_t memoryOnlyHandle,
                                        uint64_t flags) {
@@ -3234,18 +3200,27 @@ hsa_status_t Runtime::VMemoryHandleMap(void* va, size_t size, size_t in_offset,
     return HSA_STATUS_ERROR_INVALID_ARGUMENT;
   }
 
-  ret = hsaKmtExportDMABufHandle(memoryHandleIt->first, size, &dmabuf_fd, &offset);
-  if (ret != HSAKMT_STATUS_SUCCESS) return HSA_STATUS_ERROR_OUT_OF_RESOURCES;
+  auto *agent = memoryHandleIt->second.agentOwner();
+
+  // For now, this is only supported for KFD due to the call to
+  // GetAmdgpuDeviceArgs
+  if (agent->device_type() != core::Agent::DeviceType::kAmdGpuDevice)
+    return HSA_STATUS_ERROR_INVALID_AGENT;
+
+  // Create handle by exporting and importing the memory from the owning agent
+  hsa_status_t status =
+      agent->ExportDMABuf(memoryHandleIt->first, size, &dmabuf_fd, &offset);
+  if (status != HSA_STATUS_SUCCESS)
+    return status;
   assert(offset == 0);
 
-  AMD::GpuAgent* agent = static_cast<AMD::GpuAgent*>(memoryHandleIt->second.agentOwner());
-  amdgpu_bo_import_result res;
-  ret = amdgpu_bo_import(agent->libDrmDev(), amdgpu_bo_handle_type_dma_buf_fd, dmabuf_fd, &res);
-  if (ret) return HSA_STATUS_ERROR;
+  status = agent->ImportDMABuf(dmabuf_fd, &ldrm_bo);
+  if (status != HSA_STATUS_SUCCESS)
+    return status;
 
   close(dmabuf_fd);
 
-  ldrm_bo = res.buf_handle;
+  // Get address that memory is mapped to
   ret = GetAmdgpuDeviceArgs(agent, ldrm_bo, &drm_fd, &drm_cpu_addr);
   if (ret) return HSA_STATUS_ERROR;
 
@@ -3261,7 +3236,6 @@ hsa_status_t Runtime::VMemoryHandleMap(void* va, size_t size, size_t in_offset,
 }
 
 hsa_status_t Runtime::VMemoryHandleUnmap(void* va, size_t size) {
-  int ret;
   ScopedAcquire<KernelSharedMutex> lock(&memory_lock_);
 
   auto mappedHandleIt = mapped_handle_map_.find(va);
@@ -3269,24 +3243,26 @@ hsa_status_t Runtime::VMemoryHandleUnmap(void* va, size_t size) {
 
   if (mappedHandleIt->second.size != size) return HSA_STATUS_ERROR_INVALID_ARGUMENT;
 
+  // Remove access from all agents that were allowed access
   for (auto agentPermsIt = mappedHandleIt->second.allowed_agents.begin();
        agentPermsIt != mappedHandleIt->second.allowed_agents.end();) {
     assert(va == agentPermsIt->second.va);
-    if (agentPermsIt->second.ldrm_bo)
-      ret = amdgpu_bo_va_op(agentPermsIt->second.ldrm_bo, mappedHandleIt->second.offset, size,
-                            reinterpret_cast<uint64_t>(va), 0, AMDGPU_VA_OP_UNMAP);
-    else
-      ret = munmap(va, size);
-    if (ret) return HSA_STATUS_ERROR;
+
+    // MAYBE? auto status = agentPermsIt->second.RemoveAccess();
+    hsa_status_t status = agentPermsIt->second.targetAgent->Unmap(
+        &(agentPermsIt->second.ldrm_bo), va, mappedHandleIt->second.offset,
+        size);
+    if (status != HSA_STATUS_SUCCESS)
+      return status;
+
     agentPermsIt = mappedHandleIt->second.allowed_agents.erase(agentPermsIt);
   }
 
-  if (mappedHandleIt->second.ldrm_bo)
-    ret = amdgpu_bo_free(mappedHandleIt->second.ldrm_bo);
-  else
-    ret = munmap(va, size);
-
-  if (ret) return HSA_STATUS_ERROR;
+  hsa_status_t status =
+      mappedHandleIt->second.agentOwner()->ReleaseShareableHandle(
+          &(mappedHandleIt->second.ldrm_bo), va, size);
+  if (status != HSA_STATUS_SUCCESS)
+    return status;
 
   assert(mappedHandleIt->second.address_handle->use_count >= 1);
   mappedHandleIt->second.address_handle->use_count--;
@@ -3315,61 +3291,59 @@ Runtime::MappedHandleAllowedAgent::MappedHandleAllowedAgent(MappedHandle* _mappe
           mappedHandle(_mappedHandle),
           ldrm_bo(NULL) {
 
+  // CPU agents have access implicitly as the memory is already mapped.
   if (targetAgent->device_type() == core::Agent::DeviceType::kAmdCpuDevice) return;
 
-  AMD::GpuAgent* gpuAgent = static_cast<AMD::GpuAgent*>(targetAgent);
   int dmabuf_fd = 0;
   uint64_t offset = 0;
   MemoryHandle *memHandle = mappedHandle->mem_handle;
 
-  int ret = hsaKmtExportDMABufHandle(memHandle->thunk_handle, mappedHandle->size, &dmabuf_fd, &offset);
-  assert(ret == HSAKMT_STATUS_SUCCESS);
-
-  if (ret != HSAKMT_STATUS_SUCCESS) return;
+  // Export memory from owner agent.
+  hsa_status_t status = memHandle->agentOwner()->ExportDMABuf(
+      memHandle->thunk_handle, mappedHandle->size, &dmabuf_fd, &offset);
+  assert(status == HSA_STATUS_SUCCESS);
+  if (status != HSA_STATUS_SUCCESS)
+    return;
   assert(offset == 0);
 
-  amdgpu_bo_import_result res;
-  ret = amdgpu_bo_import(gpuAgent->libDrmDev(), amdgpu_bo_handle_type_dma_buf_fd, dmabuf_fd, &res);
-  assert(ret == 0);
-  if (ret) return;
+  // Import to target agent.
+  status = targetAgent->ImportDMABuf(dmabuf_fd, &ldrm_bo);
+  assert(status == HSA_STATUS_SUCCESS);
+  if (status != HSA_STATUS_SUCCESS)
+    return;
 
   close(dmabuf_fd);
-  ldrm_bo = res.buf_handle;
 }
 
 Runtime::MappedHandleAllowedAgent::~MappedHandleAllowedAgent() {
+  // CPU agents have implicit access.
   if (targetAgent->device_type() == core::Agent::DeviceType::kAmdCpuDevice) return;
 
-  amdgpu_bo_free(ldrm_bo);
+  hsa_status_t status = targetAgent->ReleaseShareableHandle(&ldrm_bo, va, size);
+  assert(status == HSA_STATUS_SUCCESS);
 }
 
 hsa_status_t Runtime::MappedHandleAllowedAgent::EnableAccess(hsa_access_permission_t perms) {
+  size_t offset = 0;
   if (targetAgent->device_type() == core::Agent::DeviceType::kAmdCpuDevice) {
-    void* ret_cpu_addr =
-        mmap(va, size, mmap_perm(perms), MAP_SHARED | MAP_FIXED, mappedHandle->drm_fd,
-             reinterpret_cast<uint64_t>(mappedHandle->drm_cpu_addr));
-    assert(ret_cpu_addr == va);
-  } else { // GPU Memory
-    int ret;
-    if (!ldrm_bo) return HSA_STATUS_ERROR;
-    ret = amdgpu_bo_va_op(ldrm_bo, mappedHandle->offset, mappedHandle->size,
-                          reinterpret_cast<uint64_t>(va), drm_perm(perms), AMDGPU_VA_OP_MAP);
-    if (ret) return HSA_STATUS_ERROR;
+    // CPU agents use a different offset
+    offset = reinterpret_cast<uint64_t>(mappedHandle->drm_cpu_addr);
+  } else {
+    offset = mappedHandle->offset;
   }
+
+  hsa_status_t status =
+      targetAgent->Map(&ldrm_bo, va, offset, size, mappedHandle->drm_fd, perms);
+  if (status != HSA_STATUS_SUCCESS)
+    return status;
+
   permissions = perms;
   return HSA_STATUS_SUCCESS;
 }
 
 hsa_status_t Runtime::MappedHandleAllowedAgent::RemoveAccess() {
-  int ret;
-
-  if (!ldrm_bo)  // Mapped to host
-    ret = munmap(va, mappedHandle->size);
-  else  // Mapped to device
-    ret = amdgpu_bo_va_op(ldrm_bo, mappedHandle->offset, mappedHandle->size,
-                          reinterpret_cast<uint64_t>(va), 0, AMDGPU_VA_OP_UNMAP);
-
-  return (ret) ? HSA_STATUS_ERROR : HSA_STATUS_SUCCESS;
+  return targetAgent->Unmap(&ldrm_bo, va, mappedHandle->offset,
+                            mappedHandle->size);
 }
 
 hsa_status_t Runtime::VMemorySetAccess(void* va, size_t size,
@@ -3418,14 +3392,17 @@ hsa_status_t Runtime::VMemorySetAccess(void* va, size_t size,
       auto agentPermsIt = mappedHandleIt.second->allowed_agents.find(targetAgent);
       if (agentPermsIt == mappedHandleIt.second->allowed_agents.end()) {
         /* Agent not previously allowed, we need a new entry */
-        auto result = mappedHandleIt.second->allowed_agents.emplace(
-            std::piecewise_construct, std::forward_as_tuple(targetAgent),
-            std::forward_as_tuple(mappedHandleIt.second, targetAgent,
-                                  mappedHandleIt.first, size,
-                                  desc[i].permissions));
-        auto agentIt = result.first;
-        if (agentIt->second.EnableAccess(desc[i].permissions) != HSA_STATUS_SUCCESS) {
-          mappedHandleIt.second->allowed_agents.erase(agentIt);
+        agentPermsIt =
+            mappedHandleIt.second->allowed_agents
+                .emplace(std::piecewise_construct,
+                         std::forward_as_tuple(targetAgent),
+                         std::forward_as_tuple(
+                             mappedHandleIt.second, targetAgent,
+                             mappedHandleIt.first, size, desc[i].permissions))
+                .first;
+        if (agentPermsIt->second.EnableAccess(desc[i].permissions) !=
+            HSA_STATUS_SUCCESS) {
+          mappedHandleIt.second->allowed_agents.erase(agentPermsIt);
           return HSA_STATUS_ERROR;
         }
       } else {
@@ -3509,13 +3486,10 @@ hsa_status_t Runtime::VMemoryExportShareableHandle(int* dmabuf_fd,
     return HSA_STATUS_ERROR_INVALID_ALLOCATION;
   }
 
-  uint64_t offset, ret;
-
-  ret = hsaKmtExportDMABufHandle(memoryHandle->second.thunk_handle, memoryHandle->second.size,
-                                 dmabuf_fd, &offset);
-  if (ret != HSAKMT_STATUS_SUCCESS) return HSA_STATUS_ERROR_OUT_OF_RESOURCES;
-
-  return HSA_STATUS_SUCCESS;
+  uint64_t offset;
+  auto *agent = memoryHandle->second.agentOwner();
+  return agent->ExportDMABuf(memoryHandle->second.thunk_handle,
+                             memoryHandle->second.size, dmabuf_fd, &offset);
 }
 
 hsa_status_t Runtime::VMemoryImportShareableHandle(int dmabuf_fd,
