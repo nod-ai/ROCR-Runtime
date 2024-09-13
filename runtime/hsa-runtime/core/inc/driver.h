@@ -113,7 +113,7 @@ class Driver {
 
   /// @brief Allocate agent-accessible memory (system or agent-local memory).
   ///
-  /// @param[out] pointer to newly allocated memory.
+  /// @param[out] mem pointer to newly allocated memory.
   ///
   /// @retval HSA_STATUS_SUCCESS if memory was successfully allocated or
   /// hsa_status_t error code if the memory allocation failed.

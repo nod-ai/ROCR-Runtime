@@ -95,6 +95,12 @@ public:
 
   hsa_status_t GetHandleFromVaddr(void* ptr, uint32_t* handle) override;
 
+  /// @brief Imports a memory chunk via dma-buf.
+  ///
+  /// @param[in] dmabuf_fd dma-buf file descriptor
+  /// @param[out] handle handle to the imported memory
+  hsa_status_t ImportDMABuf(int dmabuf_fd, uint32_t *handle);
+
 private:
   hsa_status_t QueryDriverVersion();
   /// @brief Allocate device accesible heap space.
