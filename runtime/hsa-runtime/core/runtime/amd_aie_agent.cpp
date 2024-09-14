@@ -310,7 +310,7 @@ hsa_status_t AieAgent::ReleaseShareableHandle(void *handle, void *va,
                                               size_t size) {
   auto &driver = static_cast<XdnaDriver &>(
       core::Runtime::runtime_singleton_->AgentDriver(driver_type));
-  return driver.ReleaseBO(*static_cast<uint32_t*>(handle));
+  return driver.ReleaseBO(*static_cast<uint32_t *>(handle));
 }
 
 void AieAgent::InitRegionList() {
