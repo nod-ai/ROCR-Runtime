@@ -297,6 +297,15 @@ hsa_status_t XdnaDriver::ImportDMABuf(int dmabuf_fd, uint32_t *handle) {
   return HSA_STATUS_SUCCESS;
 }
 
+hsa_status_t XdnaDriver::ReleaseBO(uint32_t handle) {
+  drm_gem_close close_params = {};
+  close_params.handle = handle;
+  if (ioctl(fd_, DRM_IOCTL_GEM_CLOSE, &close_params) < 0)
+    return HSA_STATUS_ERROR;
+
+  return HSA_STATUS_SUCCESS;
+}
+
 hsa_status_t XdnaDriver::QueryDriverVersion() {
   amdxdna_drm_query_aie_version aie_version{0, 0};
   amdxdna_drm_get_info args{DRM_AMDXDNA_QUERY_AIE_VERSION, sizeof(aie_version),

@@ -306,6 +306,13 @@ hsa_status_t AieAgent::ImportDMABuf(int dmabuf_fd, void *handle) {
   return driver.ImportDMABuf(dmabuf_fd, static_cast<uint32_t *>(handle));
 }
 
+hsa_status_t AieAgent::ReleaseShareableHandle(void *handle, void *va,
+                                              size_t size) {
+  auto &driver = static_cast<XdnaDriver &>(
+      core::Runtime::runtime_singleton_->AgentDriver(driver_type));
+  return driver.ReleaseBO(*static_cast<uint32_t*>(handle));
+}
+
 void AieAgent::InitRegionList() {
   /// TODO: Find a way to set the other memory properties in a reasonable way.
   ///       This should be easier once the ROCt source is incorporated into the

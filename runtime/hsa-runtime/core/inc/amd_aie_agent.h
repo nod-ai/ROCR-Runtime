@@ -88,6 +88,9 @@ public:
 
   hsa_status_t ImportDMABuf(int dmabuf_fd, void *handle) override;
 
+  hsa_status_t ReleaseShareableHandle(void *handle, void *va,
+                                      size_t size) override;
+
   /// @brief Getter for the AIE system allocator.
   const std::function<void *(size_t size, size_t align,
                              core::MemoryRegion::AllocateFlags flags)> &

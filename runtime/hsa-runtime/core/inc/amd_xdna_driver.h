@@ -101,6 +101,11 @@ public:
   /// @param[out] handle handle to the imported memory
   hsa_status_t ImportDMABuf(int dmabuf_fd, uint32_t *handle);
 
+  /// @brief Releases the object associated with the handle.
+  ///
+  /// @param[in] handle handle of the object to release.
+  hsa_status_t ReleaseBO(uint32_t handle);
+
 private:
   hsa_status_t QueryDriverVersion();
   /// @brief Allocate device accesible heap space.
