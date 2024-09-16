@@ -301,38 +301,18 @@ hsa_status_t AieAgent::QueueCreate(size_t size, hsa_queue_type32_t queue_type,
   return HSA_STATUS_SUCCESS;
 }
 
-__forceinline int mmap_perm(hsa_access_permission_t perms) {
-  switch (perms) {
-  case HSA_ACCESS_PERMISSION_RO:
-    return PROT_READ;
-  case HSA_ACCESS_PERMISSION_WO:
-    return PROT_WRITE;
-  case HSA_ACCESS_PERMISSION_RW:
-    return PROT_READ | PROT_WRITE;
-  case HSA_ACCESS_PERMISSION_NONE:
-  default:
-    return PROT_NONE;
-  }
-}
-
 hsa_status_t AieAgent::Map(void *handle, void *va, size_t offset, size_t size,
                            int fd, hsa_access_permission_t perms) {
-  void *mapped_ptr =
-      mmap(va, size, mmap_perm(perms), MAP_PRIVATE | MAP_FIXED, fd, offset);
-  if (mapped_ptr != va) {
-    perror("MMMAPPPPP: ");
-    return HSA_STATUS_ERROR;
-  }
-
-  return HSA_STATUS_SUCCESS;
+  auto &driver = static_cast<XdnaDriver &>(
+      core::Runtime::runtime_singleton_->AgentDriver(driver_type));
+  return driver.Map(*static_cast<uint32_t *>(handle), va, offset, size, perms);
 }
 
 hsa_status_t AieAgent::Unmap(void *handle, void *va, size_t offset,
                              size_t size) {
-  if (munmap(va, size) != 0)
-    return HSA_STATUS_ERROR;
-
-  return HSA_STATUS_SUCCESS;
+  auto &driver = static_cast<XdnaDriver &>(
+      core::Runtime::runtime_singleton_->AgentDriver(driver_type));
+  return driver.Unmap(*static_cast<uint32_t *>(handle), va, size);
 }
 
 hsa_status_t AieAgent::ImportDMABuf(int dmabuf_fd, void *handle) {
@@ -345,7 +325,7 @@ hsa_status_t AieAgent::ReleaseShareableHandle(void *handle, void *va,
                                               size_t size) {
   auto &driver = static_cast<XdnaDriver &>(
       core::Runtime::runtime_singleton_->AgentDriver(driver_type));
-  return driver.ReleaseBO(*static_cast<uint32_t *>(handle));
+  return driver.ReleaseHandle(*static_cast<uint32_t *>(handle));
 }
 
 void AieAgent::InitRegionList() {

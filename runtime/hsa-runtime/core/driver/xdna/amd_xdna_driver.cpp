@@ -297,7 +297,46 @@ hsa_status_t XdnaDriver::ImportDMABuf(int dmabuf_fd, uint32_t *handle) {
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t XdnaDriver::ReleaseBO(uint32_t handle) {
+__forceinline int mmap_perm(hsa_access_permission_t perms) {
+  switch (perms) {
+  case HSA_ACCESS_PERMISSION_RO:
+    return PROT_READ;
+  case HSA_ACCESS_PERMISSION_WO:
+    return PROT_WRITE;
+  case HSA_ACCESS_PERMISSION_RW:
+    return PROT_READ | PROT_WRITE;
+  case HSA_ACCESS_PERMISSION_NONE:
+  default:
+    return PROT_NONE;
+  }
+}
+
+hsa_status_t XdnaDriver::Map(uint32_t handle, void *va, size_t offset,
+                             size_t size, hsa_access_permission_t perms) {
+  // Get fd associated with the handle.
+  drm_prime_handle params = {};
+  params.handle = handle;
+  params.fd = -1;
+  if (ioctl(fd_, DRM_IOCTL_PRIME_HANDLE_TO_FD, &params) < 0)
+    return HSA_STATUS_ERROR;
+
+  // Change permissions; the result should match the already mapped memory.
+  void *mapped_ptr = mmap(va, size, mmap_perm(perms), MAP_FIXED | MAP_SHARED,
+                          params.fd, offset);
+  if (mapped_ptr != va)
+    return HSA_STATUS_ERROR;
+
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t XdnaDriver::Unmap(uint32_t handle, void *va, size_t size) {
+  if (munmap(va, size) != 0)
+    return HSA_STATUS_ERROR;
+
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t XdnaDriver::ReleaseHandle(uint32_t handle) {
   drm_gem_close close_params = {};
   close_params.handle = handle;
   if (ioctl(fd_, DRM_IOCTL_GEM_CLOSE, &close_params) < 0)
