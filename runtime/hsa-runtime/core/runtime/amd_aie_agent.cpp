@@ -303,6 +303,8 @@ hsa_status_t AieAgent::QueueCreate(size_t size, hsa_queue_type32_t queue_type,
 
 hsa_status_t AieAgent::Map(void *handle, void *va, size_t offset, size_t size,
                            int fd, hsa_access_permission_t perms) {
+  // fd is ignored since it corresponds to the allocated buffer, not the dma-buf export.
+  // The driver will retrieve the correct fd from the handle.
   auto &driver = static_cast<XdnaDriver &>(
       core::Runtime::runtime_singleton_->AgentDriver(driver_type));
   return driver.Map(*static_cast<uint32_t *>(handle), va, offset, size, perms);
