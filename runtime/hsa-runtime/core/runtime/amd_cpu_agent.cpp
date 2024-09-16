@@ -427,19 +427,16 @@ __forceinline int mmap_perm(hsa_access_permission_t perms) {
   case HSA_ACCESS_PERMISSION_RW:
     return PROT_READ | PROT_WRITE;
   case HSA_ACCESS_PERMISSION_NONE:
-    return PROT_NONE;
   default:
-    break;
+    return PROT_NONE;
   }
-
-  return 0;
 }
 
 hsa_status_t CpuAgent::Map(void *handle, void *va, size_t offset, size_t size,
                            int fd, hsa_access_permission_t perms) {
-  void *ret_cpu_addr =
+  void *mapped_ptr =
       mmap(va, size, mmap_perm(perms), MAP_SHARED | MAP_FIXED, fd, offset);
-  if (ret_cpu_addr != va)
+  if (mapped_ptr != va)
     return HSA_STATUS_ERROR;
 
   return HSA_STATUS_SUCCESS;

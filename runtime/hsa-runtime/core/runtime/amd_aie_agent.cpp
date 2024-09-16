@@ -43,6 +43,7 @@
 #include "core/inc/amd_aie_agent.h"
 
 #include <functional>
+#include <sys/mman.h>
 
 #include "core/inc/amd_aie_aql_queue.h"
 #include "core/inc/amd_memory_region.h"
@@ -296,6 +297,40 @@ hsa_status_t AieAgent::QueueCreate(size_t size, hsa_queue_type32_t queue_type,
 
   auto aql_queue(new AieAqlQueue(this, size, node_id()));
   *queue = aql_queue;
+
+  return HSA_STATUS_SUCCESS;
+}
+
+__forceinline int mmap_perm(hsa_access_permission_t perms) {
+  switch (perms) {
+  case HSA_ACCESS_PERMISSION_RO:
+    return PROT_READ;
+  case HSA_ACCESS_PERMISSION_WO:
+    return PROT_WRITE;
+  case HSA_ACCESS_PERMISSION_RW:
+    return PROT_READ | PROT_WRITE;
+  case HSA_ACCESS_PERMISSION_NONE:
+  default:
+    return PROT_NONE;
+  }
+}
+
+hsa_status_t AieAgent::Map(void *handle, void *va, size_t offset, size_t size,
+                           int fd, hsa_access_permission_t perms) {
+  void *mapped_ptr =
+      mmap(va, size, mmap_perm(perms), MAP_PRIVATE | MAP_FIXED, fd, offset);
+  if (mapped_ptr != va) {
+    perror("MMMAPPPPP: ");
+    return HSA_STATUS_ERROR;
+  }
+
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t AieAgent::Unmap(void *handle, void *va, size_t offset,
+                             size_t size) {
+  if (munmap(va, size) != 0)
+    return HSA_STATUS_ERROR;
 
   return HSA_STATUS_SUCCESS;
 }

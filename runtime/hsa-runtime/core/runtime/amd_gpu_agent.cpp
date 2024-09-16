@@ -1722,12 +1722,9 @@ __forceinline uint64_t drm_perm(hsa_access_permission_t perm) {
   case HSA_ACCESS_PERMISSION_RW:
     return AMDGPU_VM_PAGE_READABLE | AMDGPU_VM_PAGE_WRITEABLE;
   case HSA_ACCESS_PERMISSION_NONE:
-    return 0;
   default:
-    break;
+    return 0;
   }
-
-  return 0;
 }
 
 hsa_status_t GpuAgent::Map(void *handle, void *va, size_t offset, size_t size,
