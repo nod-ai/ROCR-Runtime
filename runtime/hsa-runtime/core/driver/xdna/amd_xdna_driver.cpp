@@ -297,20 +297,6 @@ hsa_status_t XdnaDriver::ImportDMABuf(int dmabuf_fd, uint32_t &handle) {
   return HSA_STATUS_SUCCESS;
 }
 
-__forceinline int mmap_perm(hsa_access_permission_t perms) {
-  switch (perms) {
-  case HSA_ACCESS_PERMISSION_RO:
-    return PROT_READ;
-  case HSA_ACCESS_PERMISSION_WO:
-    return PROT_WRITE;
-  case HSA_ACCESS_PERMISSION_RW:
-    return PROT_READ | PROT_WRITE;
-  case HSA_ACCESS_PERMISSION_NONE:
-  default:
-    return PROT_NONE;
-  }
-}
-
 hsa_status_t XdnaDriver::Map(uint32_t handle, void *va, size_t offset,
                              size_t size, hsa_access_permission_t perms) {
   // Get fd associated with the handle.

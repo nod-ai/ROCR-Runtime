@@ -45,6 +45,7 @@
 
 #include <limits>
 #include <string>
+#include <sys/mman.h>
 
 #include "core/inc/memory_region.h"
 #include "inc/hsa.h"
@@ -70,8 +71,23 @@ enum class DriverType { XDNA = 0, KFD, NUM_DRIVER_TYPES };
 /// and agent kernel drivers. It also maintains state associated with active
 /// kernel drivers.
 class Driver {
- public:
-  Driver() = delete;
+public:
+  /// @brief Converts @ref hsa_access_permission_t to mmap memory protection
+  ///        flags.
+  __forceinline static int mmap_perm(hsa_access_permission_t perms) {
+    switch (perms) {
+    case HSA_ACCESS_PERMISSION_RO:
+      return PROT_READ;
+    case HSA_ACCESS_PERMISSION_WO:
+      return PROT_WRITE;
+    case HSA_ACCESS_PERMISSION_RW:
+      return PROT_READ | PROT_WRITE;
+    case HSA_ACCESS_PERMISSION_NONE:
+    default:
+      return PROT_NONE;
+    }
+  }
+
   Driver(DriverType kernel_driver_type, std::string devnode_name);
   virtual ~Driver() = default;
 

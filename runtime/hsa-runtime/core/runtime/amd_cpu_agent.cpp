@@ -418,24 +418,10 @@ hsa_status_t CpuAgent::QueueCreate(size_t size, hsa_queue_type32_t queue_type,
   return HSA_STATUS_ERROR;
 }
 
-__forceinline int mmap_perm(hsa_access_permission_t perms) {
-  switch (perms) {
-  case HSA_ACCESS_PERMISSION_RO:
-    return PROT_READ;
-  case HSA_ACCESS_PERMISSION_WO:
-    return PROT_WRITE;
-  case HSA_ACCESS_PERMISSION_RW:
-    return PROT_READ | PROT_WRITE;
-  case HSA_ACCESS_PERMISSION_NONE:
-  default:
-    return PROT_NONE;
-  }
-}
-
 hsa_status_t CpuAgent::Map(void *handle, void *va, size_t offset, size_t size,
                            int fd, hsa_access_permission_t perms) {
-  void *mapped_ptr =
-      mmap(va, size, mmap_perm(perms), MAP_SHARED | MAP_FIXED, fd, offset);
+  void *mapped_ptr = mmap(va, size, core::Driver::mmap_perm(perms),
+                          MAP_SHARED | MAP_FIXED, fd, offset);
   if (mapped_ptr != va)
     return HSA_STATUS_ERROR;
 
