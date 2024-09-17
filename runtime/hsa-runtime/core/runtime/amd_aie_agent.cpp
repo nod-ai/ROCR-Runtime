@@ -301,33 +301,46 @@ hsa_status_t AieAgent::QueueCreate(size_t size, hsa_queue_type32_t queue_type,
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t AieAgent::Map(void *handle, void *va, size_t offset, size_t size,
-                           int fd, hsa_access_permission_t perms) {
+hsa_status_t AieAgent::Map(core::ShareableHandle handle, void *va,
+                           size_t offset, size_t size, int fd,
+                           hsa_access_permission_t perms) {
   // fd is ignored since it corresponds to the allocated buffer, not the dma-buf
   // export. The driver will retrieve the correct fd from the handle.
   auto &driver = static_cast<XdnaDriver &>(
       core::Runtime::runtime_singleton_->AgentDriver(driver_type));
-  return driver.Map(*static_cast<uint32_t *>(handle), va, offset, size, perms);
+  return driver.Map(handle, va, offset, size, perms);
 }
 
-hsa_status_t AieAgent::Unmap(void *handle, void *va, size_t offset,
-                             size_t size) {
+hsa_status_t AieAgent::Unmap(core::ShareableHandle handle, void *va,
+                             size_t offset, size_t size) {
   auto &driver = static_cast<XdnaDriver &>(
       core::Runtime::runtime_singleton_->AgentDriver(driver_type));
-  return driver.Unmap(*static_cast<uint32_t *>(handle), va, size);
+  return driver.Unmap(handle, va, size);
 }
 
-hsa_status_t AieAgent::ImportDMABuf(int dmabuf_fd, void *handle) {
-  auto &driver = static_cast<XdnaDriver &>(
-      core::Runtime::runtime_singleton_->AgentDriver(driver_type));
-  return driver.ImportDMABuf(dmabuf_fd, *static_cast<uint32_t *>(handle));
+hsa_status_t AieAgent::ExportDMABuf(void *va, size_t size, int *dmabuf_fd,
+                                    size_t *offset) {
+  // not implemented
+  return HSA_STATUS_ERROR_INVALID_AGENT;
 }
 
-hsa_status_t AieAgent::ReleaseShareableHandle(void *handle, void *va,
-                                              size_t size) {
+hsa_status_t AieAgent::ImportDMABuf(int dmabuf_fd,
+                                    core::ShareableHandle &handle) {
   auto &driver = static_cast<XdnaDriver &>(
       core::Runtime::runtime_singleton_->AgentDriver(driver_type));
-  return driver.ReleaseHandle(*static_cast<uint32_t *>(handle));
+  return driver.ImportDMABuf(dmabuf_fd, handle);
+}
+
+hsa_status_t AieAgent::ReleaseShareableHandle(core::ShareableHandle &handle,
+                                              void *va, size_t size) {
+  auto &driver = static_cast<XdnaDriver &>(
+      core::Runtime::runtime_singleton_->AgentDriver(driver_type));
+  const auto status = driver.ReleaseShareableHandle(handle);
+  if (status != HSA_STATUS_SUCCESS)
+    return status;
+
+  handle = {};
+  return HSA_STATUS_SUCCESS;
 }
 
 void AieAgent::InitRegionList() {

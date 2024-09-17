@@ -102,6 +102,11 @@ namespace core {
 extern bool g_use_interrupt_wait;
 extern bool g_use_mwaitx;
 
+/// @brief Handle for exported / imported memory.
+struct ShareableHandle {
+  uint64_t handle{};
+};
+
 /// @brief  Runtime class provides the following functions:
 /// - open and close connection to kernel driver.
 /// - load supported extension library (image and finalizer).
@@ -770,7 +775,8 @@ class Runtime {
 
  private:
   void CheckVirtualMemApiSupport();
-  int GetAmdgpuDeviceArgs(Agent* agent, amdgpu_bo_handle bo, int* drm_fd, uint64_t* cpu_addr);
+  int GetAmdgpuDeviceArgs(Agent *agent, ShareableHandle handle, int *drm_fd,
+                          uint64_t *cpu_addr);
 
   bool virtual_mem_api_supported_;
   bool xnack_enabled_;
@@ -827,20 +833,16 @@ class Runtime {
     Agent* targetAgent;
     hsa_access_permission_t permissions;
     MappedHandle* mappedHandle;
-    amdgpu_bo_handle ldrm_bo;
+    ShareableHandle shareable_handle;
   };
 
   struct MappedHandle {
-    MappedHandle(MemoryHandle* mem_handle, AddressHandle* address_handle, uint64_t offset,
-                 size_t size, int drm_fd, void* drm_cpu_addr, hsa_access_permission_t perm,
-                 amdgpu_bo_handle bo)
-        : mem_handle(mem_handle),
-          address_handle(address_handle),
-          offset(offset),
-          size(size),
-          drm_fd(drm_fd),
-          drm_cpu_addr(drm_cpu_addr),
-          ldrm_bo(bo) {}
+    MappedHandle(MemoryHandle *mem_handle, AddressHandle *address_handle,
+                 uint64_t offset, size_t size, int drm_fd, void *drm_cpu_addr,
+                 hsa_access_permission_t perm, ShareableHandle shareable_handle)
+        : mem_handle(mem_handle), address_handle(address_handle),
+          offset(offset), size(size), drm_fd(drm_fd),
+          drm_cpu_addr(drm_cpu_addr), shareable_handle(shareable_handle) {}
 
     __forceinline core::Agent* agentOwner() const { return mem_handle->region->owner(); }
 
@@ -850,7 +852,7 @@ class Runtime {
     size_t size;
     int drm_fd;
     void* drm_cpu_addr;  // CPU Buffer address
-    amdgpu_bo_handle ldrm_bo;
+    ShareableHandle shareable_handle;
     std::map<Agent*, MappedHandleAllowedAgent> allowed_agents;
   };
   std::map<const void*, MappedHandle> mapped_handle_map_;  // Indexed by VA

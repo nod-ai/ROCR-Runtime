@@ -279,33 +279,25 @@ class Agent : public Checked<0xF6BC25EB17E6F917> {
   virtual const std::vector<const core::MemoryRegion*>& regions() const = 0;
 
   // @brief Maps the memory associated with the handle.
-  virtual hsa_status_t Map(void *handle, void *va, size_t offset, size_t size,
-                           int fd, hsa_access_permission_t perms) {
-    return HSA_STATUS_ERROR_INVALID_AGENT;
-  }
+  virtual hsa_status_t Map(core::ShareableHandle handle, void *va,
+                           size_t offset, size_t size, int fd,
+                           hsa_access_permission_t perms) = 0;
 
   // @brief Unmaps the memory associated with the handle.
-  virtual hsa_status_t Unmap(void *handle, void *va, size_t offset,
-                             size_t size) {
-    return HSA_STATUS_ERROR_INVALID_AGENT;
-  }
+  virtual hsa_status_t Unmap(core::ShareableHandle handle, void *va,
+                             size_t offset, size_t size) = 0;
 
   // @brief Imports memory using dma-buf.
   virtual hsa_status_t ExportDMABuf(void *va, size_t size, int *dmabuf_fd,
-                                    size_t *offset) {
-    return HSA_STATUS_ERROR_INVALID_AGENT;
-  }
+                                    size_t *offset) = 0;
 
   // @brief Imports memory using dma-buf.
-  virtual hsa_status_t ImportDMABuf(int dmabuf_fd, void *handle) {
-    return HSA_STATUS_ERROR_INVALID_AGENT;
-  }
+  virtual hsa_status_t ImportDMABuf(int dmabuf_fd,
+                                    core::ShareableHandle &handle) = 0;
 
   // @brief Releases the shareable handle.
-  virtual hsa_status_t ReleaseShareableHandle(void *handle, void *va,
-                                              size_t size) {
-    return HSA_STATUS_ERROR_INVALID_AGENT;
-  }
+  virtual hsa_status_t ReleaseShareableHandle(core::ShareableHandle &handle,
+                                              void *va, size_t size) = 0;
 
   // @details Returns the agent's instruction set architecture.
   virtual const Isa* isa() const = 0;

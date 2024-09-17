@@ -2173,13 +2173,15 @@ int fn_amdgpu_device_get_fd_nosupport(HsaAMDGPUDeviceHandle device_handle) {
   return -1;
 }
 
-int Runtime::GetAmdgpuDeviceArgs(Agent* agent, amdgpu_bo_handle bo, int* drm_fd,
-                                 uint64_t* cpu_addr) {
+int Runtime::GetAmdgpuDeviceArgs(Agent *agent, ShareableHandle handle,
+                                 int *drm_fd, uint64_t *cpu_addr) {
   int renderFd = fn_amdgpu_device_get_fd(static_cast<AMD::GpuAgent*>(agent)->libDrmDev());
   if (renderFd < 0) return HSA_STATUS_ERROR;
 
   uint32_t gem_handle = 0;
-  if (amdgpu_bo_export(bo, amdgpu_bo_handle_type_kms, &gem_handle)) return HSA_STATUS_ERROR;
+  if (amdgpu_bo_export(reinterpret_cast<amdgpu_bo_handle>(handle.handle),
+                       amdgpu_bo_handle_type_kms, &gem_handle))
+    return HSA_STATUS_ERROR;
 
   union drm_amdgpu_gem_mmap args;
   memset(&args, 0, sizeof(args));
@@ -3167,7 +3169,6 @@ hsa_status_t Runtime::VMemoryHandleMap(void* va, size_t size, size_t in_offset,
   int drm_fd, dmabuf_fd = 0;
   uint64_t offset = 0, ret;
   uint64_t drm_cpu_addr = 0;
-  amdgpu_bo_handle ldrm_bo = 0;
   bool reservedAddressFound = false;
 
   ScopedAcquire<KernelSharedMutex> lock(&memory_lock_);
@@ -3214,20 +3215,23 @@ hsa_status_t Runtime::VMemoryHandleMap(void* va, size_t size, size_t in_offset,
     return status;
   assert(offset == 0);
 
-  status = agent->ImportDMABuf(dmabuf_fd, &ldrm_bo);
+  ShareableHandle shareable_handle;
+  status = agent->ImportDMABuf(dmabuf_fd, shareable_handle);
   if (status != HSA_STATUS_SUCCESS)
     return status;
 
   close(dmabuf_fd);
 
   // Get address that memory is mapped to
-  ret = GetAmdgpuDeviceArgs(agent, ldrm_bo, &drm_fd, &drm_cpu_addr);
+  ret = GetAmdgpuDeviceArgs(agent, shareable_handle, &drm_fd, &drm_cpu_addr);
   if (ret) return HSA_STATUS_ERROR;
 
-  mapped_handle_map_.emplace(std::piecewise_construct,
-          std::forward_as_tuple(va),
-          std::forward_as_tuple(&memoryHandleIt->second, &reservedAddressIt->second, offset, size, drm_fd,
-                   reinterpret_cast<void*>(drm_cpu_addr), HSA_ACCESS_PERMISSION_NONE, ldrm_bo));
+  mapped_handle_map_.emplace(
+      std::piecewise_construct, std::forward_as_tuple(va),
+      std::forward_as_tuple(&memoryHandleIt->second, &reservedAddressIt->second,
+                            offset, size, drm_fd,
+                            reinterpret_cast<void *>(drm_cpu_addr),
+                            HSA_ACCESS_PERMISSION_NONE, shareable_handle));
 
   reservedAddressIt->second.use_count++;
   memoryHandleIt->second.use_count++;
@@ -3250,8 +3254,8 @@ hsa_status_t Runtime::VMemoryHandleUnmap(void* va, size_t size) {
 
     // MAYBE? auto status = agentPermsIt->second.RemoveAccess();
     hsa_status_t status = agentPermsIt->second.targetAgent->Unmap(
-        &(agentPermsIt->second.ldrm_bo), va, mappedHandleIt->second.offset,
-        size);
+        agentPermsIt->second.shareable_handle, va,
+        mappedHandleIt->second.offset, size);
     if (status != HSA_STATUS_SUCCESS)
       return status;
 
@@ -3260,7 +3264,7 @@ hsa_status_t Runtime::VMemoryHandleUnmap(void* va, size_t size) {
 
   hsa_status_t status =
       mappedHandleIt->second.agentOwner()->ReleaseShareableHandle(
-          &(mappedHandleIt->second.ldrm_bo), va, size);
+          mappedHandleIt->second.shareable_handle, va, size);
   if (status != HSA_STATUS_SUCCESS)
     return status;
 
@@ -3282,14 +3286,11 @@ hsa_status_t Runtime::VMemoryHandleUnmap(void* va, size_t size) {
   return HSA_STATUS_SUCCESS;
 }
 
-Runtime::MappedHandleAllowedAgent::MappedHandleAllowedAgent(MappedHandle* _mappedHandle, Agent* targetAgent, void* va, size_t size,
-                             hsa_access_permission_t perms)
-        : va(va),
-          size(size),
-          targetAgent(targetAgent),
-          permissions(perms),
-          mappedHandle(_mappedHandle),
-          ldrm_bo(NULL) {
+Runtime::MappedHandleAllowedAgent::MappedHandleAllowedAgent(
+    MappedHandle *_mappedHandle, Agent *targetAgent, void *va, size_t size,
+    hsa_access_permission_t perms)
+    : va(va), size(size), targetAgent(targetAgent), permissions(perms),
+      mappedHandle(_mappedHandle) {
 
   // CPU agents have access implicitly as the memory is already mapped.
   if (targetAgent->device_type() == core::Agent::DeviceType::kAmdCpuDevice) return;
@@ -3307,7 +3308,7 @@ Runtime::MappedHandleAllowedAgent::MappedHandleAllowedAgent(MappedHandle* _mappe
   assert(offset == 0);
 
   // Import to target agent.
-  status = targetAgent->ImportDMABuf(dmabuf_fd, &ldrm_bo);
+  status = targetAgent->ImportDMABuf(dmabuf_fd, shareable_handle);
   assert(status == HSA_STATUS_SUCCESS);
   if (status != HSA_STATUS_SUCCESS)
     return;
@@ -3319,7 +3320,8 @@ Runtime::MappedHandleAllowedAgent::~MappedHandleAllowedAgent() {
   // CPU agents have implicit access.
   if (targetAgent->device_type() == core::Agent::DeviceType::kAmdCpuDevice) return;
 
-  hsa_status_t status = targetAgent->ReleaseShareableHandle(&ldrm_bo, va, size);
+  hsa_status_t status =
+      targetAgent->ReleaseShareableHandle(shareable_handle, va, size);
   assert(status == HSA_STATUS_SUCCESS);
 }
 
@@ -3332,8 +3334,8 @@ hsa_status_t Runtime::MappedHandleAllowedAgent::EnableAccess(hsa_access_permissi
     offset = mappedHandle->offset;
   }
 
-  hsa_status_t status =
-      targetAgent->Map(&ldrm_bo, va, offset, size, mappedHandle->drm_fd, perms);
+  hsa_status_t status = targetAgent->Map(shareable_handle, va, offset, size,
+                                         mappedHandle->drm_fd, perms);
   if (status != HSA_STATUS_SUCCESS)
     return status;
 
@@ -3342,7 +3344,7 @@ hsa_status_t Runtime::MappedHandleAllowedAgent::EnableAccess(hsa_access_permissi
 }
 
 hsa_status_t Runtime::MappedHandleAllowedAgent::RemoveAccess() {
-  return targetAgent->Unmap(&ldrm_bo, va, mappedHandle->offset,
+  return targetAgent->Unmap(shareable_handle, va, mappedHandle->offset,
                             mappedHandle->size);
 }
 

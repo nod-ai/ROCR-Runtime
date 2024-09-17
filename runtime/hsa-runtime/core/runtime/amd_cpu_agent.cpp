@@ -418,8 +418,9 @@ hsa_status_t CpuAgent::QueueCreate(size_t size, hsa_queue_type32_t queue_type,
   return HSA_STATUS_ERROR;
 }
 
-hsa_status_t CpuAgent::Map(void *handle, void *va, size_t offset, size_t size,
-                           int fd, hsa_access_permission_t perms) {
+hsa_status_t CpuAgent::Map(core::ShareableHandle handle, void *va,
+                           size_t offset, size_t size, int fd,
+                           hsa_access_permission_t perms) {
   void *mapped_ptr = mmap(va, size, core::Driver::mmap_perm(perms),
                           MAP_SHARED | MAP_FIXED, fd, offset);
   if (mapped_ptr != va)
@@ -428,19 +429,32 @@ hsa_status_t CpuAgent::Map(void *handle, void *va, size_t offset, size_t size,
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t CpuAgent::Unmap(void *handle, void *va, size_t offset,
-                             size_t size) {
+hsa_status_t CpuAgent::Unmap(core::ShareableHandle handle, void *va,
+                             size_t offset, size_t size) {
   if (munmap(va, size) != 0)
     return HSA_STATUS_ERROR;
 
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t CpuAgent::ReleaseShareableHandle(void *handle, void *va,
-                                              size_t size) {
+hsa_status_t CpuAgent::ExportDMABuf(void *va, size_t size, int *dmabuf_fd,
+                                    size_t *offset) {
+  // not implemented
+  return HSA_STATUS_ERROR_INVALID_AGENT;
+}
+
+hsa_status_t CpuAgent::ImportDMABuf(int dmabuf_fd,
+                                    core::ShareableHandle &handle) {
+  // not implemented
+  return HSA_STATUS_ERROR_INVALID_AGENT;
+}
+
+hsa_status_t CpuAgent::ReleaseShareableHandle(core::ShareableHandle &handle,
+                                              void *va, size_t size) {
   if (munmap(va, size) != 0)
     return HSA_STATUS_ERROR;
 
+  handle = {};
   return HSA_STATUS_SUCCESS;
 }
 

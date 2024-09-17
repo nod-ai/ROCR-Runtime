@@ -99,6 +99,11 @@ const uint64_t CP_DMA_DATA_TRANSFER_CNT_MAX = (1 << 26);
 const uint32_t GpuAgent::minAqlSize_;
 const uint32_t GpuAgent::maxAqlSize_;
 
+static_assert(
+    (sizeof(core::ShareableHandle::handle) >= sizeof(amdgpu_bo_handle)) &&
+        (alignof(core::ShareableHandle::handle) >= alignof(amdgpu_bo_handle)),
+    "ShareableHandle cannot store a amdgpu_bo_handle");
+
 GpuAgent::GpuAgent(HSAuint32 node, const HsaNodeProperties& node_props, bool xnack_mode,
                    uint32_t index)
     : GpuAgentInt(node),
@@ -1727,9 +1732,10 @@ __forceinline uint64_t drm_perm(hsa_access_permission_t perm) {
   }
 }
 
-hsa_status_t GpuAgent::Map(void *handle, void *va, size_t offset, size_t size,
-                           int fd, hsa_access_permission_t perms) {
-  const auto &ldrm_bo = *static_cast<amdgpu_bo_handle *>(handle);
+hsa_status_t GpuAgent::Map(core::ShareableHandle handle, void *va,
+                           size_t offset, size_t size, int fd,
+                           hsa_access_permission_t perms) {
+  const auto ldrm_bo = reinterpret_cast<amdgpu_bo_handle>(handle.handle);
   if (!ldrm_bo)
     return HSA_STATUS_ERROR;
   if (amdgpu_bo_va_op(ldrm_bo, offset, size, reinterpret_cast<uint64_t>(va),
@@ -1739,9 +1745,9 @@ hsa_status_t GpuAgent::Map(void *handle, void *va, size_t offset, size_t size,
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t GpuAgent::Unmap(void *handle, void *va, size_t offset,
-                             size_t size) {
-  const auto &ldrm_bo = *static_cast<amdgpu_bo_handle *>(handle);
+hsa_status_t GpuAgent::Unmap(core::ShareableHandle handle, void *va,
+                             size_t offset, size_t size) {
+  const auto ldrm_bo = reinterpret_cast<amdgpu_bo_handle>(handle.handle);
   if (!ldrm_bo)
     return HSA_STATUS_ERROR;
 
@@ -1766,27 +1772,29 @@ hsa_status_t GpuAgent::ExportDMABuf(void *va, size_t size, int *dmabuf_fd,
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t GpuAgent::ImportDMABuf(int dmabuf_fd, void *handle) {
+hsa_status_t GpuAgent::ImportDMABuf(int dmabuf_fd,
+                                    core::ShareableHandle &handle) {
   amdgpu_bo_import_result res;
   auto ret = amdgpu_bo_import(libDrmDev(), amdgpu_bo_handle_type_dma_buf_fd,
                               dmabuf_fd, &res);
   if (ret)
     return HSA_STATUS_ERROR;
 
-  *static_cast<amdgpu_bo_handle *>(handle) = res.buf_handle;
+  handle.handle = reinterpret_cast<uint64_t>(res.buf_handle);
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t GpuAgent::ReleaseShareableHandle(void *handle, void *va,
-                                              size_t size) {
-  const auto &ldrm_bo = *static_cast<amdgpu_bo_handle *>(handle);
+hsa_status_t GpuAgent::ReleaseShareableHandle(core::ShareableHandle &handle,
+                                              void *va, size_t size) {
+  const auto ldrm_bo = reinterpret_cast<amdgpu_bo_handle>(handle.handle);
   if (!ldrm_bo)
     return HSA_STATUS_ERROR;
 
-  auto ret = amdgpu_bo_free(ldrm_bo);
+  const auto ret = amdgpu_bo_free(ldrm_bo);
   if (ret)
     return HSA_STATUS_ERROR;
 
+  handle = {};
   return HSA_STATUS_SUCCESS;
 }
 

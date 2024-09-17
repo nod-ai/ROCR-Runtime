@@ -55,6 +55,7 @@ namespace rocr {
 namespace core {
 
 class Queue;
+struct ShareableHandle;
 
 struct DriverVersionInfo {
   uint32_t major;

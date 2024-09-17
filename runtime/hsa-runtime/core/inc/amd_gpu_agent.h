@@ -318,18 +318,19 @@ class GpuAgent : public GpuAgentInt {
                            uint32_t group_segment_size,
                            core::Queue** queue) override;
 
-  hsa_status_t Map(void *handle, void *va, size_t offset, size_t size, int fd,
-                   hsa_access_permission_t perms) override;
+  hsa_status_t Map(core::ShareableHandle handle, void *va, size_t offset,
+                   size_t size, int fd, hsa_access_permission_t perms) override;
 
-  hsa_status_t Unmap(void *handle, void *va, size_t offset,
+  hsa_status_t Unmap(core::ShareableHandle handle, void *va, size_t offset,
                      size_t size) override;
 
   hsa_status_t ExportDMABuf(void *va, size_t size, int *dmabuf_fd,
                             size_t *offset) override;
 
-  hsa_status_t ImportDMABuf(int dmabuf_fd, void *handle) override;
+  hsa_status_t ImportDMABuf(int dmabuf_fd,
+                            core::ShareableHandle &handle) override;
 
-  hsa_status_t ReleaseShareableHandle(void *handle, void *va,
+  hsa_status_t ReleaseShareableHandle(core::ShareableHandle &handle, void *va,
                                       size_t size) override;
 
   // @brief Decrement GWS ref count.
