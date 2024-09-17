@@ -99,7 +99,7 @@ public:
   ///
   /// @param[in] dmabuf_fd dma-buf file descriptor
   /// @param[out] handle handle to the imported memory
-  hsa_status_t ImportDMABuf(int dmabuf_fd, uint32_t *handle);
+  hsa_status_t ImportDMABuf(int dmabuf_fd, uint32_t &handle);
 
   /// @brief Maps the memory associated with the handle.
   ///

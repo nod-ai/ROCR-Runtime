@@ -286,14 +286,14 @@ hsa_status_t XdnaDriver::GetHandleFromVaddr(void* ptr, uint32_t* handle) {
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t XdnaDriver::ImportDMABuf(int dmabuf_fd, uint32_t *handle) {
+hsa_status_t XdnaDriver::ImportDMABuf(int dmabuf_fd, uint32_t &handle) {
   drm_prime_handle import_params = {};
   import_params.handle = AMDXDNA_INVALID_BO_HANDLE;
   import_params.fd = dmabuf_fd;
   if (ioctl(fd_, DRM_IOCTL_PRIME_FD_TO_HANDLE, &import_params) < 0)
     return HSA_STATUS_ERROR;
 
-  *handle = import_params.handle;
+  handle = import_params.handle;
   return HSA_STATUS_SUCCESS;
 }
 
