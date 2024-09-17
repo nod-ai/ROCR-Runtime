@@ -51,6 +51,8 @@
 namespace rocr {
 namespace AMD {
 
+class XdnaDriver;
+
 class AieAgent : public core::Agent {
 public:
   /// @brief AIE agent constructor.
@@ -131,6 +133,9 @@ private:
   std::function<void *(size_t size, size_t align,
                        core::MemoryRegion::AllocateFlags flags)>
       system_allocator_;
+
+  /// @brief Owning driver.
+  XdnaDriver *driver_ = nullptr;
 
   const hsa_profile_t profile_ = HSA_PROFILE_BASE;
   const uint32_t min_aql_size_ = 0x40;

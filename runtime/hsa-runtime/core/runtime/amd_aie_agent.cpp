@@ -56,7 +56,10 @@ namespace AMD {
 
 AieAgent::AieAgent(uint32_t node)
     : core::Agent(core::DriverType::XDNA, node,
-                  core::Agent::DeviceType::kAmdAieDevice) {
+                  core::Agent::DeviceType::kAmdAieDevice),
+      driver_{&static_cast<XdnaDriver &>(
+          core::Runtime::runtime_singleton_->AgentDriver(
+              core::DriverType::XDNA))} {
   InitRegionList();
   InitAllocators();
   GetAgentProperties();
@@ -306,16 +309,12 @@ hsa_status_t AieAgent::Map(core::ShareableHandle handle, void *va,
                            hsa_access_permission_t perms) {
   // fd is ignored since it corresponds to the allocated buffer, not the dma-buf
   // export. The driver will retrieve the correct fd from the handle.
-  auto &driver = static_cast<XdnaDriver &>(
-      core::Runtime::runtime_singleton_->AgentDriver(driver_type));
-  return driver.Map(handle, va, offset, size, perms);
+  return driver_->Map(handle, va, offset, size, perms);
 }
 
 hsa_status_t AieAgent::Unmap(core::ShareableHandle handle, void *va,
                              size_t offset, size_t size) {
-  auto &driver = static_cast<XdnaDriver &>(
-      core::Runtime::runtime_singleton_->AgentDriver(driver_type));
-  return driver.Unmap(handle, va, size);
+  return driver_->Unmap(handle, va, size);
 }
 
 hsa_status_t AieAgent::ExportDMABuf(void *va, size_t size, int *dmabuf_fd,
@@ -326,16 +325,12 @@ hsa_status_t AieAgent::ExportDMABuf(void *va, size_t size, int *dmabuf_fd,
 
 hsa_status_t AieAgent::ImportDMABuf(int dmabuf_fd,
                                     core::ShareableHandle &handle) {
-  auto &driver = static_cast<XdnaDriver &>(
-      core::Runtime::runtime_singleton_->AgentDriver(driver_type));
-  return driver.ImportDMABuf(dmabuf_fd, handle);
+  return driver_->ImportDMABuf(dmabuf_fd, handle);
 }
 
 hsa_status_t AieAgent::ReleaseShareableHandle(core::ShareableHandle &handle,
                                               void *va, size_t size) {
-  auto &driver = static_cast<XdnaDriver &>(
-      core::Runtime::runtime_singleton_->AgentDriver(driver_type));
-  const auto status = driver.ReleaseShareableHandle(handle);
+  const auto status = driver_->ReleaseShareableHandle(handle);
   if (status != HSA_STATUS_SUCCESS)
     return status;
 
@@ -369,10 +364,7 @@ void AieAgent::InitRegionList() {
       new MemoryRegion(false, false, false, false, true, this, dev_mem_props));
 }
 
-void AieAgent::GetAgentProperties() {
-  core::Runtime::runtime_singleton_->AgentDriver(driver_type)
-      .GetAgentProperties(*this);
-}
+void AieAgent::GetAgentProperties() { driver_->GetAgentProperties(*this); }
 
 void AieAgent::InitAllocators() {
   for (const auto *region : regions()) {
