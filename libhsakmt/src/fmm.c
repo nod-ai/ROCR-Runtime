@@ -2392,10 +2392,10 @@ static void *map_mmio(uint32_t node_id, uint32_t gpu_id, int mmap_fd)
 	}
 
 	/* Map for GPU access*/
-	if (hsakmt_fmm_map_to_gpu(mem, PAGE_SIZE, NULL)) {
-		__fmm_release(vm_obj, aperture);
-		return NULL;
-	}
+//	if (hsakmt_fmm_map_to_gpu(mem, PAGE_SIZE, NULL)) {
+//		__fmm_release(vm_obj, aperture);
+//		return NULL;
+//	}
 
 	return mem;
 }
@@ -2404,13 +2404,13 @@ static void release_mmio(void)
 {
 	uint32_t gpu_mem_id;
 
-	for (gpu_mem_id = 0; (uint32_t)gpu_mem_id < gpu_mem_count; gpu_mem_id++) {
-		if (!gpu_mem[gpu_mem_id].mmio_aperture.base)
-			continue;
-		hsakmt_fmm_unmap_from_gpu(gpu_mem[gpu_mem_id].mmio_aperture.base);
-		munmap(gpu_mem[gpu_mem_id].mmio_aperture.base, PAGE_SIZE);
-		hsakmt_fmm_release(gpu_mem[gpu_mem_id].mmio_aperture.base);
-	}
+//	for (gpu_mem_id = 0; (uint32_t)gpu_mem_id < gpu_mem_count; gpu_mem_id++) {
+//		if (!gpu_mem[gpu_mem_id].mmio_aperture.base)
+//			continue;
+//		hsakmt_fmm_unmap_from_gpu(gpu_mem[gpu_mem_id].mmio_aperture.base);
+//		munmap(gpu_mem[gpu_mem_id].mmio_aperture.base, PAGE_SIZE);
+//		hsakmt_fmm_release(gpu_mem[gpu_mem_id].mmio_aperture.base);
+//	}
 }
 
 HSAKMT_STATUS hsakmt_fmm_get_amdgpu_device_handle(uint32_t node_id,
@@ -2790,21 +2790,21 @@ HSAKMT_STATUS hsakmt_fmm_init_process_apertures(unsigned int NumNodes)
 	if (!init_mem_handle_aperture(PAGE_SIZE, guardPages))
 		pr_err("Failed to init mem_handle_aperture\n");
 
-	for (gpu_mem_id = 0; (uint32_t)gpu_mem_id < gpu_mem_count; gpu_mem_id++) {
-		if (!hsakmt_topology_is_svm_needed(gpu_mem[gpu_mem_id].EngineId))
-			continue;
-		gpu_mem[gpu_mem_id].mmio_aperture.base = map_mmio(
-				gpu_mem[gpu_mem_id].node_id,
-				gpu_mem[gpu_mem_id].gpu_id,
-				hsakmt_kfd_fd);
-		if (gpu_mem[gpu_mem_id].mmio_aperture.base)
-			gpu_mem[gpu_mem_id].mmio_aperture.limit = (void *)
-			((char *)gpu_mem[gpu_mem_id].mmio_aperture.base +
-			 PAGE_SIZE - 1);
-		else
-			pr_err("Failed to map remapped mmio page on gpu_mem %d\n",
-					gpu_mem_id);
-	}
+//	for (gpu_mem_id = 0; (uint32_t)gpu_mem_id < gpu_mem_count; gpu_mem_id++) {
+//		if (!hsakmt_topology_is_svm_needed(gpu_mem[gpu_mem_id].EngineId))
+//			continue;
+//		gpu_mem[gpu_mem_id].mmio_aperture.base = map_mmio(
+//				gpu_mem[gpu_mem_id].node_id,
+//				gpu_mem[gpu_mem_id].gpu_id,
+//				hsakmt_kfd_fd);
+//		if (gpu_mem[gpu_mem_id].mmio_aperture.base)
+//			gpu_mem[gpu_mem_id].mmio_aperture.limit = (void *)
+//			((char *)gpu_mem[gpu_mem_id].mmio_aperture.base +
+//			 PAGE_SIZE - 1);
+//		else
+//			pr_err("Failed to map remapped mmio page on gpu_mem %d\n",
+//					gpu_mem_id);
+//	}
 
 	free(process_apertures);
 	return ret;

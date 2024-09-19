@@ -179,7 +179,8 @@ hsa_status_t MemoryRegion::AllocateImpl(size_t& size, AllocateFlags alloc_flags,
 
   size = AlignUp(size, kPageSize_);
 
-  return core::Runtime::runtime_singleton_->AgentDriver(owner()->driver_type)
+  auto driver_type = rocr::core::DriverType::XDNA;
+  return core::Runtime::runtime_singleton_->AgentDriver(driver_type)
       .AllocateMemory(*this, alloc_flags, address, size, agent_node_id);
 }
 
@@ -191,7 +192,8 @@ hsa_status_t MemoryRegion::Free(void* address, size_t size) const {
 hsa_status_t MemoryRegion::FreeImpl(void* address, size_t size) const {
   if (fragment_allocator_.free(address)) return HSA_STATUS_SUCCESS;
 
-  return core::Runtime::runtime_singleton_->AgentDriver(owner()->driver_type)
+  auto driver_type = rocr::core::DriverType::XDNA;
+  return core::Runtime::runtime_singleton_->AgentDriver(driver_type)
       .FreeMemory(address, size);
 }
 

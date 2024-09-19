@@ -821,8 +821,8 @@ static const struct hsa_gfxip_table *find_hsa_gfxip_device(uint16_t device_id, u
 void hsakmt_topology_setup_is_dgpu_param(HsaNodeProperties *props)
 {
 	/* if we found a dGPU node, then treat the whole system as dGPU */
-	if (!props->NumCPUCores && props->NumFComputeCores)
-		hsakmt_is_dgpu = true;
+//	if (!props->NumCPUCores && props->NumFComputeCores)
+//		hsakmt_is_dgpu = true;
 }
 
 bool hsakmt_topology_is_svm_needed(HSA_ENGINE_ID EngineId)

@@ -307,3 +307,5 @@ endif()
 cpack_add_component(asan
   DISPLAY_NAME "ASAN"
   DESCRIPTION "ASAN libraries for rocr-runtime")
+
+add_subdirectory(rocrtst/suites/aie)

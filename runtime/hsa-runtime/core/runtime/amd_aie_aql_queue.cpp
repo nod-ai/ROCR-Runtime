@@ -136,7 +136,8 @@ hsa_status_t AieAqlQueue::Inactivate() {
   hsa_status_t status(HSA_STATUS_SUCCESS);
 
   if (active) {
-    status = core::Runtime::runtime_singleton_->AgentDriver(agent_.driver_type)
+    auto d = agent_.driver_type;
+    status = core::Runtime::runtime_singleton_->AgentDriver(d)
                  .DestroyQueue(*this);
     hw_ctx_handle_ = std::numeric_limits<uint32_t>::max();
   }
@@ -346,6 +347,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(
       case HSA_AMD_AIE_ERT_START_CU: {
         std::vector<uint32_t> bo_args;
         std::vector<uint32_t> cmd_handles;
+        std::vector<std::pair<amdxdna_cmd *, uint32_t >> cmds;
 
         // Iterating over future packets and seeing how many contiguous HSA_AMD_AIE_ERT_START_CU
         // packets there are. All can be combined into a single chain.
@@ -391,6 +393,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(
 
           // Keeping track of the handle
           cmd_handles.push_back(cmd_bo_handle);
+          cmds.emplace_back(cmd, cmd_size);
         }
 
         // Creating a packet that contains the command chain
@@ -442,6 +445,11 @@ hsa_status_t AieAqlQueue::SubmitCmd(
         // Syncing BOs after we execute the command
         if (SyncBos(bo_args, fd))
           return HSA_STATUS_ERROR;
+
+        for (auto& cmd_size : cmds) {
+          munmap(cmd_size.first, cmd_size.second);
+        }
+        munmap(cmd_chain, cmd_chain_size);
 
         cur_id += num_cont_start_cu_pkts;
         break;
