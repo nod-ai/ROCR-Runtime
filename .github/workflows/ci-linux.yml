@@ -85,7 +85,7 @@ jobs:
           mkdir -p "$build_rocr_dir"
           build_rocr_dir="$(cd $build_rocr_dir && pwd)"
           rocr_install_dir="$GITHUB_WORKSPACE/rocr-install"
-          
+
           cmake -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=ON \
@@ -94,7 +94,7 @@ jobs:
             -DLLVM_DIR=$HOME/llvm/lib/cmake/llvm \
             -DIMAGE_SUPPORT=OFF \
             -S "$rocr_dir" -B "$build_rocr_dir"
-          
+
           cmake --build "$build_rocr_dir" --target install
           tar -cf rocr-${GITHUB_SHA::8}.tar rocr-install
 
@@ -138,7 +138,7 @@ jobs:
       - name: Build and run AIE smoke test
         run: |
           pushd rocrtst/suites/aie
-          
+
           build_dir="$PWD/build"
           mkdir -p $build_dir
           cmake -GNinja \
@@ -146,15 +146,15 @@ jobs:
             "-Dhsa-runtime64_DIR=$hsa_runtime64_ROOT/lib64/cmake/hsa-runtime64" \
             -S "$PWD" -B "$build_dir"
           cmake --build "$build_dir" --target aie_hsa_bare_add_one
-          
+
           "$build_dir"/aie_hsa_bare_add_one $PWD
-          
+
           popd
 
       - name: Build AIE test suite
         run: |
           pushd rocrtst/suites/aie
-          
+
           build_dir="$PWD/build"
           mkdir -p $build_dir
           cmake -GNinja \
@@ -162,9 +162,25 @@ jobs:
             "-Dhsa-runtime64_DIR=$hsa_runtime64_ROOT/lib64/cmake/hsa-runtime64" \
             -S "$PWD" -B "$build_dir"
           cmake --build "$build_dir" --target aie_hsa_dispatch_test
-          
+
           "$build_dir"/aie_hsa_dispatch_test $PWD
-          
+
+          popd
+
+      - name: Build AIE memory test suite
+        run: |
+          pushd rocrtst/suites/aie
+
+          build_dir="$PWD/build"
+          mkdir -p $build_dir
+          cmake -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            "-Dhsa-runtime64_DIR=$hsa_runtime64_ROOT/lib64/cmake/hsa-runtime64" \
+            -S "$PWD" -B "$build_dir"
+          cmake --build "$build_dir" --target memory
+
+          "$build_dir"/memory
+
           popd
 
   release:
