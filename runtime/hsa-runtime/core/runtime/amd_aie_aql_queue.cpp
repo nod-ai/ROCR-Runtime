@@ -346,6 +346,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(
       case HSA_AMD_AIE_ERT_START_CU: {
         std::vector<uint32_t> bo_args;
         std::vector<uint32_t> cmd_handles;
+        std::vector<uint32_t> cmd_sizes;
 
         // Iterating over future packets and seeing how many contiguous HSA_AMD_AIE_ERT_START_CU
         // packets there are. All can be combined into a single chain.
@@ -391,6 +392,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(
 
           // Keeping track of the handle
           cmd_handles.push_back(cmd_bo_handle);
+          cmd_sizes.push_back(cmd_size);
         }
 
         // Creating a packet that contains the command chain
@@ -440,15 +442,12 @@ hsa_status_t AieAqlQueue::SubmitCmd(
         ExecCmdAndWait(&exec_cmd_0, hw_ctx_handle, fd);
 
         // Freeing the commands that we created
-        drm_gem_close close_bo_args{0};
         for (int i = 0; i < cmd_handles.size(); i++) {
-          close_bo_args.handle = cmd_handles[i];
-          ioctl(fd, DRM_IOCTL_GEM_CLOSE, &close_bo_args);
+          munmap(vmem_handle_mappings[cmd_handles[i]], cmd_sizes[i]);
         }
 
         // Freeing the command chain BO
-        close_bo_args.handle = cmd_chain_bo_handle;
-        ioctl(fd, DRM_IOCTL_GEM_CLOSE, &close_bo_args);
+        munmap(cmd_chain, cmd_chain_size);
 
         // Syncing BOs after we execute the command
         if (SyncBos(bo_args, fd))
