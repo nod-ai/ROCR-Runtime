@@ -56,7 +56,7 @@ namespace rocr {
 namespace AMD {
 
 // Tracks aggregate size of system memory available on platform
-size_t MemoryRegion::max_sysmem_alloc_size_ = 0;
+size_t MemoryRegion::max_sysmem_alloc_size_ = 64 * 1024 * 1024;
 size_t MemoryRegion::kPageSize_ = sysconf(_SC_PAGESIZE);
 
 bool MemoryRegion::RegisterMemory(void* ptr, size_t size, const HsaMemFlags& MemFlags) {
@@ -179,7 +179,7 @@ hsa_status_t MemoryRegion::AllocateImpl(size_t& size, AllocateFlags alloc_flags,
 
   size = AlignUp(size, kPageSize_);
 
-  return core::Runtime::runtime_singleton_->AgentDriver(owner()->driver_type)
+  return core::Runtime::runtime_singleton_->AgentDriver(rocr::core::DriverType::XDNA)
       .AllocateMemory(*this, alloc_flags, address, size, agent_node_id);
 }
 
@@ -191,7 +191,7 @@ hsa_status_t MemoryRegion::Free(void* address, size_t size) const {
 hsa_status_t MemoryRegion::FreeImpl(void* address, size_t size) const {
   if (fragment_allocator_.free(address)) return HSA_STATUS_SUCCESS;
 
-  return core::Runtime::runtime_singleton_->AgentDriver(owner()->driver_type)
+  return core::Runtime::runtime_singleton_->AgentDriver(rocr::core::DriverType::XDNA)
       .FreeMemory(address, size);
 }
 

@@ -3612,7 +3612,7 @@ hsa_status_t Runtime::GetHandleFromVaddr(void* ptr, uint32_t* handle) {
   }
 
   auto* agent = it->second.region->owner();
-  auto& driver = AgentDriver(agent->driver_type);
+  auto& driver = AgentDriver(rocr::core::DriverType::XDNA);
   return driver.GetHandleFromVaddr(ptr, handle);
 }
 

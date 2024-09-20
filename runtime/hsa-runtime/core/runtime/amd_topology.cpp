@@ -74,7 +74,7 @@ static const uint kKfdVersionMinor = 99;
 
 void DiscoverDrivers(bool &gpu_found, bool &aie_found) {
   // Open connection to GPU and AIE kernel drivers.
-  gpu_found = (KfdDriver::DiscoverDriver() == HSA_STATUS_SUCCESS);
+   gpu_found = (KfdDriver::DiscoverDriver() == HSA_STATUS_SUCCESS);
   aie_found = (XdnaDriver::DiscoverDriver() == HSA_STATUS_SUCCESS);
 }
 
@@ -421,6 +421,7 @@ bool Load() {
   bool aie_found = false;
 
   DiscoverDrivers(gpu_found, aie_found);
+  gpu_found = false;
 
   if (!(gpu_found || aie_found)) {
     return false;
@@ -448,6 +449,22 @@ bool Load() {
   if (aie_found) {
     DiscoverAie();
   }
+
+  HsaSystemProperties props;
+  hsaKmtReleaseSystemProperties();
+
+  if (hsaKmtAcquireSystemProperties(&props) != HSAKMT_STATUS_SUCCESS) {
+    exit(-1);
+  }
+
+  uint32_t node_id = 0;
+  HsaNodeProperties node_prop = {0};
+  if (hsaKmtGetNodeProperties(node_id, &node_prop) != HSAKMT_STATUS_SUCCESS) {
+    exit(-1);
+  }
+
+  const CpuAgent* cpu = DiscoverCpu(0, node_prop);
+  assert(((node_prop.NumCPUCores == 0) || (cpu != nullptr)) && "CPU device failed discovery.");
 
   return true;
 }

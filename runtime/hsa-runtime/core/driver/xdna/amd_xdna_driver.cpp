@@ -191,6 +191,7 @@ XdnaDriver::AllocateMemory(const core::MemoryRegion &mem_region,
   vmem_handle_mappings.emplace(create_bo_args.handle, mapped_mem);
   vmem_handle_mappings_reverse.emplace(mapped_mem, create_bo_args.handle);
 
+//  printf("allocated %p %zu\n", mapped_mem, size);
   return HSA_STATUS_SUCCESS;
 }
 
@@ -209,7 +210,9 @@ hsa_status_t XdnaDriver::FreeMemory(void* ptr, size_t size) {
   if (ioctl(fd_, DRM_IOCTL_GEM_CLOSE, &close_args) < 0) {
     return HSA_STATUS_ERROR;
   }
+//  printf("deallocating %p %zu\n", ptr, size);
 
+  munmap(ptr, size);
   vmem_handle_mappings.erase(handle);
   vmem_handle_mappings_reverse.erase(it);
 
@@ -429,3 +432,4 @@ hsa_status_t XdnaDriver::ConfigHwCtxCU(
 
 } // namespace AMD
 } // namespace rocr
+

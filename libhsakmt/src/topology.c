@@ -2185,13 +2185,13 @@ HSAKMT_STATUS HSAKMTAPI hsaKmtAcquireSystemProperties(HsaSystemProperties *Syste
 
 	assert(g_system);
 
-	err = hsakmt_fmm_init_process_apertures(g_system->NumNodes);
-	if (err != HSAKMT_STATUS_SUCCESS)
-		goto init_process_apertures_failed;
-
-	err = hsakmt_init_process_doorbells(g_system->NumNodes);
-	if (err != HSAKMT_STATUS_SUCCESS)
-		goto init_doorbells_failed;
+//	err = hsakmt_fmm_init_process_apertures(g_system->NumNodes);
+//	if (err != HSAKMT_STATUS_SUCCESS)
+//		goto init_process_apertures_failed;
+//
+//	err = hsakmt_init_process_doorbells(g_system->NumNodes);
+//	if (err != HSAKMT_STATUS_SUCCESS)
+//		goto init_doorbells_failed;
 
 	*SystemProperties = *g_system;
 
