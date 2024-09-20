@@ -439,6 +439,17 @@ hsa_status_t AieAqlQueue::SubmitCmd(
         // Executing all commands in the command chain
         ExecCmdAndWait(&exec_cmd_0, hw_ctx_handle, fd);
 
+        // Freeing the commands that we created
+        drm_gem_close close_bo_args{0};
+        for (int i = 0; i < cmd_handles.size(); i++) {
+          close_bo_args.handle = cmd_handles[i];
+          ioctl(fd, DRM_IOCTL_GEM_CLOSE, &close_bo_args);
+        }
+
+        // Freeing the command chain BO
+        close_bo_args.handle = cmd_chain_bo_handle;
+        ioctl(fd, DRM_IOCTL_GEM_CLOSE, &close_bo_args);
+
         // Syncing BOs after we execute the command
         if (SyncBos(bo_args, fd))
           return HSA_STATUS_ERROR;
