@@ -2392,10 +2392,10 @@ static void *map_mmio(uint32_t node_id, uint32_t gpu_id, int mmap_fd)
 	}
 
 	/* Map for GPU access*/
-	if (hsakmt_fmm_map_to_gpu(mem, PAGE_SIZE, NULL)) {
-		__fmm_release(vm_obj, aperture);
-		return NULL;
-	}
+//	if (hsakmt_fmm_map_to_gpu(mem, PAGE_SIZE, NULL)) {
+//		__fmm_release(vm_obj, aperture);
+//		return NULL;
+//	}
 
 	return mem;
 }

@@ -375,10 +375,10 @@ void *hsakmt_allocate_exec_aligned_memory_gpu(uint32_t size, uint32_t align, uin
 		return mem;
 	}
 
-	if (hsaKmtMapMemoryToGPU(mem, size, &gpu_va) != HSAKMT_STATUS_SUCCESS) {
-		hsaKmtFreeMemory(mem, size);
-		return NULL;
-	}
+//	if (hsaKmtMapMemoryToGPU(mem, size, &gpu_va) != HSAKMT_STATUS_SUCCESS) {
+//		hsaKmtFreeMemory(mem, size);
+//		return NULL;
+//	}
 
 	return mem;
 }

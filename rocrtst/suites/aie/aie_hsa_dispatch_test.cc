@@ -14,8 +14,8 @@
 #include <string>
 #include <vector>
 
-#include "hsa/hsa.h"
-#include "hsa/hsa_ext_amd.h"
+#include "hsa.h"
+#include "hsa_ext_amd.h"
 
 namespace {
 

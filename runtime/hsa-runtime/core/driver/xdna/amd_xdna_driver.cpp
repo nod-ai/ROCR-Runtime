@@ -210,6 +210,7 @@ hsa_status_t XdnaDriver::FreeMemory(void* ptr, size_t size) {
     return HSA_STATUS_ERROR;
   }
 
+  munmap(ptr, size);
   vmem_handle_mappings.erase(handle);
   vmem_handle_mappings_reverse.erase(it);
 

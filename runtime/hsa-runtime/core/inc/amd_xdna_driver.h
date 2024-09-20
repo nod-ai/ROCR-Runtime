@@ -128,7 +128,7 @@ private:
 
   /// @brief The aligned device heap.
   void *dev_heap_aligned = nullptr;
-  static constexpr size_t dev_heap_size = 48 * 1024 * 1024;
+  static constexpr size_t dev_heap_size = 64 * 1024 * 1024;
   static constexpr size_t dev_heap_align = 64 * 1024 * 1024;
 };
 
