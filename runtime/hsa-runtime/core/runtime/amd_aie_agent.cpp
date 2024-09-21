@@ -345,6 +345,8 @@ void AieAgent::InitAllocators() {
                    ? mem
                    : nullptr;
       };
+
+      system_deallocator_ = [](void* ptr) { core::Runtime::runtime_singleton_->FreeMemory(ptr); };
       break;
     }
   }
