@@ -17,6 +17,8 @@
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_amd.h"
 
+constexpr int NUM_WRAP_AROUNDS = 256;
+
 namespace {
 
 hsa_status_t get_agent(hsa_agent_t agent, std::vector<hsa_agent_t> *agents,
@@ -194,7 +196,7 @@ int main(int argc, char **argv) {
   uint32_t aie_max_queue_size;
   r = hsa_agent_get_info(aie_agent, HSA_AGENT_INFO_QUEUE_MAX_SIZE, &aie_max_queue_size);
   assert(r == HSA_STATUS_SUCCESS);
-  int num_pkts = aie_max_queue_size;
+  int num_pkts = aie_max_queue_size * NUM_WRAP_AROUNDS;
 
   // Load the DPU and PDI files into a global pool that doesn't support kernel
   // args (DEV BO).
@@ -237,69 +239,75 @@ int main(int argc, char **argv) {
 
   uint64_t wr_idx = 0;
   uint64_t packet_id = 0;
+  uint32_t pkt_iter = 0;
 
-  for (int pkt_iter = 0; pkt_iter < num_pkts; pkt_iter++) {
-    r = hsa_amd_memory_pool_allocate(global_kernarg_mem_pool, data_buffer_size, 0,
-                                     reinterpret_cast<void **>(&input[pkt_iter]));
-    assert(r == HSA_STATUS_SUCCESS);
-    r = hsa_amd_get_handle_from_vaddr(input[pkt_iter], &input_handle[pkt_iter]);
-    assert(r == HSA_STATUS_SUCCESS);
-    assert(input_handle[pkt_iter] != 0);
+  for (int wrap_around = 0; wrap_around < NUM_WRAP_AROUNDS; wrap_around++) {
+    for (int queue_iter = 0; queue_iter < aie_max_queue_size; queue_iter++) {
+      r = hsa_amd_memory_pool_allocate(global_kernarg_mem_pool, data_buffer_size, 0,
+                                       reinterpret_cast<void **>(&input[pkt_iter]));
+      assert(r == HSA_STATUS_SUCCESS);
+      r = hsa_amd_get_handle_from_vaddr(input[pkt_iter], &input_handle[pkt_iter]);
+      assert(r == HSA_STATUS_SUCCESS);
+      assert(input_handle[pkt_iter] != 0);
 
-    r = hsa_amd_memory_pool_allocate(global_kernarg_mem_pool, data_buffer_size, 0,
-                                     reinterpret_cast<void **>(&output[pkt_iter]));
-    assert(r == HSA_STATUS_SUCCESS);
-    r = hsa_amd_get_handle_from_vaddr(output[pkt_iter], &output_handle[pkt_iter]);
-    assert(r == HSA_STATUS_SUCCESS);
-    assert(output_handle[pkt_iter] != 0);
+      r = hsa_amd_memory_pool_allocate(global_kernarg_mem_pool, data_buffer_size, 0,
+                                       reinterpret_cast<void **>(&output[pkt_iter]));
+      assert(r == HSA_STATUS_SUCCESS);
+      r = hsa_amd_get_handle_from_vaddr(output[pkt_iter], &output_handle[pkt_iter]);
+      assert(r == HSA_STATUS_SUCCESS);
+      assert(output_handle[pkt_iter] != 0);
 
-    for (std::size_t i = 0; i < num_data_elements; i++) {
-      *(input[pkt_iter] + i) = i * (pkt_iter + 1);
-      *(output[pkt_iter] + i) = 0xDEFACE;
+      for (std::size_t i = 0; i < num_data_elements; i++) {
+        *(input[pkt_iter] + i) = i * (pkt_iter + 1);
+        *(output[pkt_iter] + i) = 0xDEFACE;
+      }
+
+      // Getting a slot in the queue
+      wr_idx = hsa_queue_add_write_index_relaxed(aie_queue, 1);
+      packet_id = wr_idx % aie_queue->size;
+
+      // Creating a packet to store the command
+      hsa_amd_aie_ert_packet_t *cmd_pkt = static_cast<hsa_amd_aie_ert_packet_t *>(
+          aie_queue->base_address) + packet_id;
+      assert(r == HSA_STATUS_SUCCESS);
+      cmd_pkt->state = HSA_AMD_AIE_ERT_STATE_NEW;
+      cmd_pkt->count = 0xA;  // # of arguments to put in command
+      cmd_pkt->opcode = HSA_AMD_AIE_ERT_START_CU;
+      cmd_pkt->header.AmdFormat = HSA_AMD_PACKET_TYPE_AIE_ERT;
+      cmd_pkt->header.header = HSA_PACKET_TYPE_VENDOR_SPECIFIC
+                               << HSA_PACKET_HEADER_TYPE;
+
+      // Creating the payload for the packet
+      hsa_amd_aie_ert_start_kernel_data_t *cmd_payload = NULL;
+      assert(r == HSA_STATUS_SUCCESS);
+      r = hsa_amd_memory_pool_allocate(global_kernarg_mem_pool, 64, 0,
+                                       reinterpret_cast<void **>(&cmd_payload));
+      assert(r == HSA_STATUS_SUCCESS);
+      // Selecting the PDI to use with this command
+      cmd_payload->cu_mask = 0x1;
+      // Transaction opcode
+      cmd_payload->data[0] = 0x3;
+      cmd_payload->data[1] = 0x0;
+      cmd_payload->data[2] = instr_handle;
+      cmd_payload->data[3] = 0x0;
+      cmd_payload->data[4] = num_instr;
+      cmd_payload->data[5] = input_handle[pkt_iter];
+      cmd_payload->data[6] = 0;
+      cmd_payload->data[7] = output_handle[pkt_iter];
+      cmd_payload->data[8] = 0;
+      cmd_pkt->payload_data = reinterpret_cast<uint64_t>(cmd_payload);
+
+      // Keeping track of payloads so we can free them at the end
+      cmd_payloads[pkt_iter] = cmd_payload;
+
+      // Updating out pkt count
+      pkt_iter++;
     }
 
-    // Getting a slot in the queue
-    wr_idx = hsa_queue_add_write_index_relaxed(aie_queue, 1);
-    packet_id = wr_idx % aie_queue->size;
-
-    // Creating a packet to store the command
-    hsa_amd_aie_ert_packet_t *cmd_pkt = static_cast<hsa_amd_aie_ert_packet_t *>(
-        aie_queue->base_address) + packet_id;
-    assert(r == HSA_STATUS_SUCCESS);
-    cmd_pkt->state = HSA_AMD_AIE_ERT_STATE_NEW;
-    cmd_pkt->count = 0xA;  // # of arguments to put in command
-    cmd_pkt->opcode = HSA_AMD_AIE_ERT_START_CU;
-    cmd_pkt->header.AmdFormat = HSA_AMD_PACKET_TYPE_AIE_ERT;
-    cmd_pkt->header.header = HSA_PACKET_TYPE_VENDOR_SPECIFIC
-                             << HSA_PACKET_HEADER_TYPE;
-
-    // Creating the payload for the packet
-    hsa_amd_aie_ert_start_kernel_data_t *cmd_payload = NULL;
-    assert(r == HSA_STATUS_SUCCESS);
-    r = hsa_amd_memory_pool_allocate(global_kernarg_mem_pool, 64, 0,
-                                     reinterpret_cast<void **>(&cmd_payload));
-    assert(r == HSA_STATUS_SUCCESS);
-    // Selecting the PDI to use with this command
-    cmd_payload->cu_mask = 0x1;
-    // Transaction opcode
-    cmd_payload->data[0] = 0x3;
-    cmd_payload->data[1] = 0x0;
-    cmd_payload->data[2] = instr_handle;
-    cmd_payload->data[3] = 0x0;
-    cmd_payload->data[4] = num_instr;
-    cmd_payload->data[5] = input_handle[pkt_iter];
-    cmd_payload->data[6] = 0;
-    cmd_payload->data[7] = output_handle[pkt_iter];
-    cmd_payload->data[8] = 0;
-    cmd_pkt->payload_data = reinterpret_cast<uint64_t>(cmd_payload);
-
-    // Keeping track of payloads so we can free them at the end
-    cmd_payloads[pkt_iter] = cmd_payload;
+    // Ringing the doorbell to dispatch each packet we added to
+    // the queue
+    hsa_signal_store_screlease(aie_queue->doorbell_signal, wr_idx);
   }
-
-  // Ringing the doorbell to dispatch each packet we added to
-  // the queue
-  hsa_signal_store_screlease(aie_queue->doorbell_signal, wr_idx);
 
   for (int pkt_iter = 0; pkt_iter < num_pkts; pkt_iter++) {
     for (std::size_t i = 0; i < num_data_elements; i++) {

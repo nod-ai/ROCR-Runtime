@@ -238,7 +238,7 @@ void AieAqlQueue::StoreRelaxed(hsa_signal_value_t value) {
 
   SubmitCmd(hw_ctx_handle_, fd, amd_queue_.hsa_queue.base_address,
             amd_queue_.read_dispatch_id, amd_queue_.write_dispatch_id,
-            vmem_handle_mappings);
+            amd_queue_.hsa_queue.size, vmem_handle_mappings);
 }
 
 hsa_status_t AieAqlQueue::SyncBos(std::vector<uint32_t> &bo_args, int fd) {
@@ -333,18 +333,18 @@ hsa_status_t AieAqlQueue::CreateCmd(uint32_t size, uint32_t *handle,
 }
 
 hsa_status_t AieAqlQueue::SubmitCmd(
-    uint32_t hw_ctx_handle, int fd, void *queue_base, uint64_t read_dispatch_id,
-    uint64_t write_dispatch_id,
+    uint32_t hw_ctx_handle, int fd, void *queue_base, volatile uint64_t &read_dispatch_id,
+    volatile uint64_t write_dispatch_id, uint64_t queue_size,
     std::unordered_map<uint32_t, void *> &vmem_handle_mappings) {
   uint64_t cur_id = read_dispatch_id;
   while (cur_id < write_dispatch_id) {
     hsa_amd_aie_ert_packet_t *pkt =
-        static_cast<hsa_amd_aie_ert_packet_t *>(queue_base) + cur_id;
-
+        static_cast<hsa_amd_aie_ert_packet_t *>(queue_base) + (cur_id % queue_size);
     // Get the packet header information
     if (pkt->header.header != HSA_PACKET_TYPE_VENDOR_SPECIFIC ||
-        pkt->header.AmdFormat != HSA_AMD_PACKET_TYPE_AIE_ERT)
+        pkt->header.AmdFormat != HSA_AMD_PACKET_TYPE_AIE_ERT) {
       return HSA_STATUS_ERROR;
+    }
 
     // Get the payload information
     switch (pkt->opcode) {
@@ -358,9 +358,16 @@ hsa_status_t AieAqlQueue::SubmitCmd(
         // packets there are. All can be combined into a single chain.
         int num_cont_start_cu_pkts = 1;
         for (int peak_pkt_id = cur_id + 1; peak_pkt_id < write_dispatch_id; peak_pkt_id++) {
-          if (pkt->opcode != HSA_AMD_AIE_ERT_START_CU) {
+          hsa_amd_aie_ert_packet_t *peak_pkt =
+            static_cast<hsa_amd_aie_ert_packet_t *>(queue_base) + (peak_pkt_id % queue_size);
+
+          // Get the packet header information to make sure the packet is valid
+          if (peak_pkt->header.header != HSA_PACKET_TYPE_VENDOR_SPECIFIC ||
+              peak_pkt->header.AmdFormat != HSA_AMD_PACKET_TYPE_AIE_ERT ||
+              peak_pkt->opcode != HSA_AMD_AIE_ERT_START_CU) {
             break;
           }
+
           num_cont_start_cu_pkts++;
         }
 
@@ -369,7 +376,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(
 
           // Getting the current command packet
           hsa_amd_aie_ert_packet_t *pkt =
-              static_cast<hsa_amd_aie_ert_packet_t *>(queue_base) + pkt_iter;
+              static_cast<hsa_amd_aie_ert_packet_t *>(queue_base) + (pkt_iter % queue_size);
           hsa_amd_aie_ert_start_kernel_data_t *cmd_pkt_payload =
               reinterpret_cast<hsa_amd_aie_ert_start_kernel_data_t *>(
                   pkt->payload_data);
@@ -400,6 +407,9 @@ hsa_status_t AieAqlQueue::SubmitCmd(
           cmd_handles.push_back(cmd_bo_handle);
           cmds.push_back(cmd);
           cmd_sizes.push_back(cmd_size);
+          
+          // Setting the pkt we just processed to invalid
+          pkt->header.header = HSA_PACKET_TYPE_INVALID;
         }
 
         // Creating a packet that contains the command chain
@@ -473,6 +483,9 @@ hsa_status_t AieAqlQueue::SubmitCmd(
       }
     }
   }
+
+  // Updating the read_dispatch_id
+  read_dispatch_id = cur_id;
 
   return HSA_STATUS_SUCCESS;
 }
