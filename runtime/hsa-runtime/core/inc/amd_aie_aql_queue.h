@@ -164,8 +164,8 @@ private:
 
   static hsa_status_t SubmitCmd(
       uint32_t hw_ctx_handle, int fd, void *queue_base,
-      uint64_t read_dispatch_id, uint64_t write_dispatch_id,
-      std::unordered_map<uint32_t, void *> &vmem_handle_mappings);
+      volatile uint64_t &read_dispatch_id, volatile uint64_t write_dispatch_id,
+      uint64_t queue_size, std::unordered_map<uint32_t, void *> &vmem_handle_mappings);
 
   /// @brief Creates a command BO and returns a pointer to the memory and
   //          the corresponding handle
