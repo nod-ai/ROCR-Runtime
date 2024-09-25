@@ -136,6 +136,8 @@ hsa_status_t
 XdnaDriver::AllocateMemory(const core::MemoryRegion &mem_region,
                            core::MemoryRegion::AllocateFlags alloc_flags,
                            void **mem, size_t size, uint32_t node_id) {
+
+  std::cout << __func__ << __LINE__ << std::endl;
   const auto &region = static_cast<const MemoryRegion &>(mem_region);
   amdxdna_drm_create_bo create_bo_args{.size = size};
   amdxdna_drm_get_bo_info get_bo_info_args{0};
