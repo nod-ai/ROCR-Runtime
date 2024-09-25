@@ -135,9 +135,12 @@ void load_instr_file(hsa_amd_memory_pool_t mem_pool, const std::string &file_nam
   }
 
   std::cout << __LINE__ << std::endl;
+  std::cout << "Buff is at " << buf << std::endl;
   auto r = hsa_amd_memory_pool_allocate(mem_pool, size, 0, buf);
+  std::cout << __LINE__ << std::endl;
   assert(r == HSA_STATUS_SUCCESS);
   std::memcpy(*buf, pdi_vec.data(), pdi_vec.size() * sizeof(uint32_t));
+  std::cout << __LINE__ << std::endl;
   num_instr = pdi_vec.size();
   
   std::cout << __LINE__ << std::endl;
