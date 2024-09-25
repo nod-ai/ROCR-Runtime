@@ -145,16 +145,20 @@ XdnaDriver::AllocateMemory(const core::MemoryRegion &mem_region,
   void *mapped_mem(nullptr);
 
   if (!region.IsSystem()) {
+    std::cout << __func__ << __LINE__ << std::endl;
     return HSA_STATUS_ERROR_INVALID_REGION;
   }
 
   if (region.kernarg()) {
+    std::cout << __func__ << __LINE__ << std::endl;
     create_bo_args.type = AMDXDNA_BO_SHMEM;
   } else {
+    std::cout << __func__ << __LINE__ << std::endl;
     create_bo_args.type = AMDXDNA_BO_DEV;
   }
 
   if (ioctl(fd_, DRM_IOCTL_AMDXDNA_CREATE_BO, &create_bo_args) < 0) {
+    std::cout << __func__ << __LINE__ << std::endl;
     return HSA_STATUS_ERROR_OUT_OF_RESOURCES;
   }
 
@@ -162,8 +166,10 @@ XdnaDriver::AllocateMemory(const core::MemoryRegion &mem_region,
   // In case we need to close this BO to avoid leaks due to some error after
   // creation.
   close_bo_args.handle = create_bo_args.handle;
+  std::cout << __func__ << __LINE__ << std::endl;
 
   if (ioctl(fd_, DRM_IOCTL_AMDXDNA_GET_BO_INFO, &get_bo_info_args) < 0) {
+    std::cout << __func__ << __LINE__ << std::endl;
     // Close the BO in the case we can't get info about it.
     ioctl(fd_, DRM_IOCTL_GEM_CLOSE, &close_bo_args);
     return HSA_STATUS_ERROR;
@@ -173,6 +179,7 @@ XdnaDriver::AllocateMemory(const core::MemoryRegion &mem_region,
   /// to VA memory addresses. Once we can support the separate VMEM call to
   /// map handles we can fix this.
   if (region.kernarg()) {
+    std::cout << __func__ << __LINE__ << std::endl;
     mapped_mem = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_,
                       get_bo_info_args.map_offset);
     if (mapped_mem == MAP_FAILED) {
@@ -181,15 +188,19 @@ XdnaDriver::AllocateMemory(const core::MemoryRegion &mem_region,
       return HSA_STATUS_ERROR_OUT_OF_RESOURCES;
     }
   } else {
+    std::cout << __func__ << __LINE__ << std::endl;
     mapped_mem = reinterpret_cast<void *>(get_bo_info_args.vaddr);
   }
 
   if (alloc_flags & core::MemoryRegion::AllocateMemoryOnly) {
+    std::cout << __func__ << __LINE__ << std::endl;
     *mem = reinterpret_cast<void *>(create_bo_args.handle);
   } else {
+    std::cout << __func__ << __LINE__ << std::endl;
     *mem = mapped_mem;
   }
 
+  std::cout << __func__ << __LINE__ << std::endl;
   vmem_handle_mappings.emplace(create_bo_args.handle, mapped_mem);
   handle_size_map.emplace(create_bo_args.handle, size);
   vmem_handle_mappings_reverse.emplace(mapped_mem, create_bo_args.handle);
