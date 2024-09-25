@@ -139,6 +139,7 @@ void load_instr_file(hsa_amd_memory_pool_t mem_pool, const std::string &file_nam
   auto r = hsa_amd_memory_pool_allocate(mem_pool, size, 0, buf);
   std::cout << __LINE__ << std::endl;
   assert(r == HSA_STATUS_SUCCESS);
+  std::cout << "*buf is at " << *buf << std::endl;
   std::memcpy(*buf, pdi_vec.data(), pdi_vec.size() * sizeof(uint32_t));
   std::cout << __LINE__ << std::endl;
   num_instr = pdi_vec.size();
@@ -221,6 +222,7 @@ int main(int argc, char **argv) {
   // Load the DPU and PDI files into a global pool that doesn't support kernel
   // args (DEV BO).
   uint32_t num_instr;
+  std::cout << "instr_inst_buf: " << instr_inst_buf << std::endl;
   load_instr_file(global_dev_mem_pool, instr_inst_file_name,
                 reinterpret_cast<void **>(&instr_inst_buf), num_instr);
   uint32_t instr_handle = 0;
