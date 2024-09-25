@@ -145,11 +145,13 @@ int main(int argc, char **argv) {
   hsa_amd_memory_pool_t global_dev_mem_pool{0};
   // System memory pool. Used for allocating kernel argument data.
   hsa_amd_memory_pool_t global_kernarg_mem_pool{0};
+  std::cout << __LINE__ << std::endl;
   const std::string instr_inst_file_name(sourcePath / "add_one_insts.txt");
   const std::string pdi_file_name(sourcePath / "add_one.pdi");
   uint32_t *instr_inst_buf(nullptr);
   uint64_t *pdi_buf(nullptr);
 
+  std::cout << __LINE__ << std::endl;
   assert(aie_agents.empty());
   assert(global_dev_mem_pool.handle == 0);
   assert(global_kernarg_mem_pool.handle == 0);
@@ -158,6 +160,7 @@ int main(int argc, char **argv) {
   auto r = hsa_init();
   assert(r == HSA_STATUS_SUCCESS);
 
+  std::cout << __LINE__ << std::endl;
   assert(sizeof(hsa_kernel_dispatch_packet_s) ==
          sizeof(hsa_amd_aie_ert_packet_s));
 
@@ -167,6 +170,7 @@ int main(int argc, char **argv) {
   assert(r == HSA_STATUS_SUCCESS);
   assert(aie_agents.size() == 1);
 
+  std::cout << __LINE__ << std::endl;
   const auto &aie_agent = aie_agents.front();
 
   // Create a queue on the first agent.
@@ -176,12 +180,14 @@ int main(int argc, char **argv) {
   assert(aie_queue);
   assert(aie_queue->base_address);
 
+  std::cout << __LINE__ << std::endl;
   // Find a pool for DEV BOs. This is a global system memory pool that is
   // mapped to the device. Will be used for PDIs and DPU instructions.
   r = hsa_amd_agent_iterate_memory_pools(
       aie_agent, get_coarse_global_dev_mem_pool, &global_dev_mem_pool);
   assert(r == HSA_STATUS_SUCCESS);
 
+  std::cout << __LINE__ << std::endl;
   // Find a pool that supports kernel args. This is just normal system memory.
   // It will be used for commands and input data.
   r = hsa_amd_agent_iterate_memory_pools(
@@ -189,6 +195,7 @@ int main(int argc, char **argv) {
   assert(r == HSA_STATUS_SUCCESS);
   assert(global_kernarg_mem_pool.handle);
 
+  std::cout << __LINE__ << std::endl;
   // Getting the maximum size of the queue so we can submit that many consecutive
   // packets.
   uint32_t aie_max_queue_size;
@@ -196,6 +203,7 @@ int main(int argc, char **argv) {
   assert(r == HSA_STATUS_SUCCESS);
   int num_pkts = aie_max_queue_size;
 
+  std::cout << __LINE__ << std::endl;
   // Load the DPU and PDI files into a global pool that doesn't support kernel
   // args (DEV BO).
   uint32_t num_instr;
@@ -206,6 +214,7 @@ int main(int argc, char **argv) {
   assert(r == HSA_STATUS_SUCCESS);
   assert(instr_handle != 0);
 
+  std::cout << __LINE__ << std::endl;
   load_pdi_file(global_dev_mem_pool, pdi_file_name,
                 reinterpret_cast<void **>(&pdi_buf));
   uint32_t pdi_handle = 0;
@@ -213,6 +222,7 @@ int main(int argc, char **argv) {
   assert(r == HSA_STATUS_SUCCESS);
   assert(pdi_handle != 0);
 
+  std::cout << __LINE__ << std::endl;
   hsa_amd_aie_ert_hw_ctx_cu_config_t cu_config{.cu_config_bo = pdi_handle,
                                                .cu_func = 0};
 
@@ -224,6 +234,7 @@ int main(int argc, char **argv) {
       aie_queue, HSA_AMD_QUEUE_AIE_ERT_HW_CXT_CONFIG_CU, &config_cu_args);
   assert(r == HSA_STATUS_SUCCESS);
 
+  std::cout << __LINE__ << std::endl;
   // create inputs / outputs
   constexpr std::size_t num_data_elements = 1024;
   constexpr std::size_t data_buffer_size =
@@ -238,6 +249,7 @@ int main(int argc, char **argv) {
   uint64_t wr_idx = 0;
   uint64_t packet_id = 0;
 
+  std::cout << __LINE__ << std::endl;
   for (int pkt_iter = 0; pkt_iter < num_pkts; pkt_iter++) {
     r = hsa_amd_memory_pool_allocate(global_kernarg_mem_pool, data_buffer_size, 0,
                                      reinterpret_cast<void **>(&input[pkt_iter]));
@@ -300,6 +312,7 @@ int main(int argc, char **argv) {
   // Ringing the doorbell to dispatch each packet we added to
   // the queue
   hsa_signal_store_screlease(aie_queue->doorbell_signal, wr_idx);
+  std::cout << __LINE__ << std::endl;
 
   for (int pkt_iter = 0; pkt_iter < num_pkts; pkt_iter++) {
     for (std::size_t i = 0; i < num_data_elements; i++) {
@@ -319,6 +332,7 @@ int main(int argc, char **argv) {
   r = hsa_queue_destroy(aie_queue);
   assert(r == HSA_STATUS_SUCCESS);
 
+  std::cout << __LINE__ << std::endl;
   r = hsa_amd_memory_pool_free(pdi_buf);
   assert(r == HSA_STATUS_SUCCESS);
   r = hsa_amd_memory_pool_free(instr_inst_buf);
