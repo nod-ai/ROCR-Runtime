@@ -41,7 +41,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 /*
-  Helpers to use native types with C++11 atomic operations.
+  Helpers to use native types with C++17 atomic operations.
   Fixes GCC builtin functionality for x86 with respect to WC and non-temporal
   stores.
 */
