@@ -221,7 +221,7 @@ message( STATUS "PROJECT_SOURCE_DIR:" ${PROJECT_SOURCE_DIR} )
 #  message(STATUS "${file}")
 #endforeach()
 
-#add_definitions(-Wall -std=c++11)
+#add_definitions(-Wall -std=c++17)
 
 if ( "${CMAKE_C_COMPILER_VERSION}" STRGREATER "4.8.0")
 ## Add --enable-new-dtags to generate DT_RUNPATH
