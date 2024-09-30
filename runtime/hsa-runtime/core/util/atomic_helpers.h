@@ -143,7 +143,7 @@ static __forceinline T
   BasicCheck<T>();
   PreFence(order);
   std::atomic<T> atomic_var(*ptr);
-  T ret = atomic_var.Load(order);
+  T ret = atomic_var.load(order);
   PostFence(order);
   return ret;
 }
@@ -159,7 +159,7 @@ static __forceinline T
   BasicCheck<T>();
   PreFence(order);
   std::atomic<T> atomic_var(*ptr);
-  T ret = atomic_var.Load(order);
+  T ret = atomic_var.load(order);
   PostFence(order);
   return ret;
 }
