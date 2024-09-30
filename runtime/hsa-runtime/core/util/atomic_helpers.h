@@ -141,9 +141,9 @@ template <class T>
 static __forceinline T
     Load(const T* ptr, std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
-  T ret;
   PreFence(order);
-  __atomic_load(ptr, &ret, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  T ret = atomic_var.Load(order);
   PostFence(order);
   return ret;
 }
@@ -157,9 +157,9 @@ static __forceinline T
     Load(const volatile T* ptr,
          std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
-  T ret;
   PreFence(order);
-  __atomic_load(ptr, &ret, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  T ret = atomic_var.Load(order);
   PostFence(order);
   return ret;
 }
