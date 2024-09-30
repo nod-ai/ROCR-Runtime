@@ -67,23 +67,6 @@
 namespace rocr {
 namespace atomic {
 
-static constexpr int c11ToBuiltInFlags(std::memory_order order)
-{
-#if ALWAYS_CONSERVATIVE
-  return __ATOMIC_RELAXED;
-#elif X64_ORDER_WC
-  return __ATOMIC_RELAXED;
-#else
-  return (order == std::memory_order_relaxed) ? __ATOMIC_RELAXED :
-    (order == std::memory_order_acquire) ? __ATOMIC_ACQUIRE :
-    (order == std::memory_order_release) ? __ATOMIC_RELEASE :
-    (order == std::memory_order_seq_cst) ? __ATOMIC_SEQ_CST :
-    (order == std::memory_order_consume) ? __ATOMIC_CONSUME :
-    (order == std::memory_order_acq_rel) ? __ATOMIC_ACQ_REL :
-    __ATOMIC_SEQ_CST;
-#endif
-}
-
 static __forceinline void PreFence(std::memory_order order) {
 #if ALWAYS_CONSERVATIVE
   switch (order) {
@@ -191,7 +174,9 @@ static __forceinline void Store(
     T* ptr, T val, std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  __atomic_store(ptr, &val, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  atomic_var.store(val, order);
+  *ptr = atomic_var.load();
   PostFence(order);
 }
 
@@ -206,7 +191,9 @@ static __forceinline void Store(
     std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  __atomic_store(ptr, &val, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  atomic_var.store(val, order);
+  *ptr = atomic_var.load();
   PostFence(order);
 }
 
@@ -222,7 +209,11 @@ static __forceinline T
         std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  __atomic_compare_exchange(ptr, &expected, &val, false, c11ToBuiltInFlags(order), __ATOMIC_RELAXED);
+  // compare *ptr with expected, if true, assign val to *ptr
+  // if false, assign *ptr to expected
+  std::atomic<T> atomic_var(*ptr);
+  atomic_var.compare_exchange_strong(expected, val, order, std::memory_order_relaxed);
+  *ptr = atomic_var.load();
   PostFence(order);
   return expected;
 }
@@ -239,7 +230,11 @@ static __forceinline T
         std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  __atomic_compare_exchange(ptr, &expected, &val, false, c11ToBuiltInFlags(order), __ATOMIC_RELAXED);
+  // compare *ptr with expected, if true, assign val to *ptr
+  // if false, assign *ptr to expected
+  std::atomic<T> atomic_var(*ptr);
+  atomic_var.compare_exchange_strong(expected, val, order, std::memory_order_relaxed);
+  *ptr = atomic_var.load();
   PostFence(order);
   return expected;
 }
@@ -256,7 +251,9 @@ static __forceinline T
   BasicCheck<T>();
   T ret;
   PreFence(order);
-  __atomic_exchange(ptr, &val, &ret, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  ret = atomic_var.exchange(val, order);
+  *ptr = atomic_var.load();
   PostFence(order);
   return ret;
 }
@@ -273,7 +270,9 @@ static __forceinline T
   BasicCheck<T>();
   T ret;
   PreFence(order);
-  __atomic_exchange(ptr, &val, &ret, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  ret = atomic_var.exchange(val, order);
+  *ptr = atomic_var.load();
   PostFence(order);
   return ret;
 }
@@ -288,7 +287,9 @@ static __forceinline T
     Add(T* ptr, T val, std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  T ret = __atomic_fetch_add(ptr, val, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  T ret = atomic_var.fetch_add(val, order);
+  *ptr = atomic_var.load();
   PostFence(order);
   return ret;
 }
@@ -304,7 +305,9 @@ static __forceinline T
     Sub(T* ptr, T val, std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  T ret = __atomic_fetch_sub(ptr, val, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  T ret = atomic_var.fetch_sub(val, order);
+  *ptr = atomic_var.load();
   PostFence(order);
   return ret;
 }
@@ -320,7 +323,9 @@ static __forceinline T
     And(T* ptr, T val, std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  T ret = __atomic_fetch_and(ptr, val, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  T ret = atomic_var.fetch_and(val, order);
+  *ptr = atomic_var.load();
   PostFence(order);
   return ret;
 }
@@ -335,7 +340,9 @@ static __forceinline T
     Or(T* ptr, T val, std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  T ret = __atomic_fetch_or(ptr, val, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  T ret = atomic_var.fetch_or(val, order);
+  *ptr = atomic_var.load();
   PostFence(order);
   return ret;
 }
@@ -351,7 +358,9 @@ static __forceinline T
     Xor(T* ptr, T val, std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  T ret = __atomic_fetch_xor(ptr, val, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  T ret = atomic_var.fetch_xor(val, order);
+  *ptr = atomic_var.load();
   PostFence(order);
   return ret;
 }
@@ -366,7 +375,9 @@ static __forceinline T
     Increment(T* ptr, std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  T ret = __atomic_fetch_add(ptr, 1, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  T ret = atomic_var.fetch_add(1, order);
+  *ptr = atomic_var.load();
   PostFence(order);
   return ret;
 }
@@ -381,7 +392,9 @@ static __forceinline T
     Decrement(T* ptr, std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  T ret = __atomic_fetch_sub(ptr, 1, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  T ret = atomic_var.fetch_sub(1, order);
+  *ptr = atomic_var.load();
   PostFence(order);
   return ret;
 }
@@ -397,7 +410,9 @@ static __forceinline T
         std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  T ret = __atomic_fetch_add(ptr, val, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  T ret = atomic_var.fetch_add(val, order);
+  *ptr = atomic_var.load();
   PostFence(order);
   return ret;
 }
@@ -414,7 +429,9 @@ static __forceinline T
         std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  T ret = __atomic_fetch_sub(ptr, val, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  T ret = atomic_var.fetch_sub(val, order);
+  *ptr = atomic_var.load();
   PostFence(order);
   return ret;
 }
@@ -431,7 +448,9 @@ static __forceinline T
         std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  T ret = __atomic_fetch_and(ptr, val, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  T ret = atomic_var.fetch_and(val, order);
+  *ptr = atomic_var.load();
   PostFence(order);
   return ret;
 }
@@ -446,7 +465,9 @@ static __forceinline T Or(volatile T* ptr, T val,
                           std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  T ret = __atomic_fetch_or(ptr, val, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  T ret = atomic_var.fetch_or(val, order);
+  *ptr = atomic_var.load();
   PostFence(order);
   return ret;
 }
@@ -463,7 +484,9 @@ static __forceinline T
         std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  T ret = __atomic_fetch_xor(ptr, val, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  T ret = atomic_var.fetch_xor(val, order);
+  *ptr = atomic_var.load();
   PostFence(order);
   return ret;
 }
@@ -479,7 +502,9 @@ static __forceinline T
               std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  T ret = __atomic_fetch_add(ptr, 1, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  T ret = atomic_var.fetch_add(1, order);
+  *ptr = atomic_var.load();
   PostFence(order);
   return ret;
 }
@@ -495,7 +520,9 @@ static __forceinline T
               std::memory_order order = std::memory_order_relaxed) {
   BasicCheck<T>();
   PreFence(order);
-  T ret = __atomic_fetch_sub(ptr, 1, c11ToBuiltInFlags(order));
+  std::atomic<T> atomic_var(*ptr);
+  T ret = atomic_var.fetch_sub(1, order);
+  *ptr = atomic_var.load();
   PostFence(order);
   return ret;
 }
