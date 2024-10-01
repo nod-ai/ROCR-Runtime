@@ -43,6 +43,7 @@
 #include "core/inc/amd_aie_agent.h"
 
 #include <functional>
+#include <sys/mman.h>
 
 #include "core/inc/amd_aie_aql_queue.h"
 #include "core/inc/amd_memory_region.h"
@@ -55,7 +56,10 @@ namespace AMD {
 
 AieAgent::AieAgent(uint32_t node)
     : core::Agent(core::DriverType::XDNA, node,
-                  core::Agent::DeviceType::kAmdAieDevice) {
+                  core::Agent::DeviceType::kAmdAieDevice),
+      driver_{&static_cast<XdnaDriver &>(
+          core::Runtime::runtime_singleton_->AgentDriver(
+              core::DriverType::XDNA))} {
   InitRegionList();
   InitAllocators();
   GetAgentProperties();
@@ -300,6 +304,40 @@ hsa_status_t AieAgent::QueueCreate(size_t size, hsa_queue_type32_t queue_type,
   return HSA_STATUS_SUCCESS;
 }
 
+hsa_status_t AieAgent::Map(core::ShareableHandle handle, void *va,
+                           size_t offset, size_t size, int fd,
+                           hsa_access_permission_t perms) {
+  // fd is ignored since it corresponds to the allocated buffer, not the dma-buf
+  // export. The driver will retrieve the correct fd from the handle.
+  return driver_->Map(handle, va, offset, size, perms);
+}
+
+hsa_status_t AieAgent::Unmap(core::ShareableHandle handle, void *va,
+                             size_t offset, size_t size) {
+  return driver_->Unmap(handle, va, size);
+}
+
+hsa_status_t AieAgent::ExportDMABuf(void *va, size_t size, int *dmabuf_fd,
+                                    size_t *offset) {
+  // not implemented
+  return HSA_STATUS_ERROR_INVALID_AGENT;
+}
+
+hsa_status_t AieAgent::ImportDMABuf(int dmabuf_fd,
+                                    core::ShareableHandle &handle) {
+  return driver_->ImportDMABuf(dmabuf_fd, handle);
+}
+
+hsa_status_t AieAgent::ReleaseShareableHandle(core::ShareableHandle &handle,
+                                              void *va, size_t size) {
+  const auto status = driver_->ReleaseShareableHandle(handle);
+  if (status != HSA_STATUS_SUCCESS)
+    return status;
+
+  handle = {};
+  return HSA_STATUS_SUCCESS;
+}
+
 void AieAgent::InitRegionList() {
   /// TODO: Find a way to set the other memory properties in a reasonable way.
   ///       This should be easier once the ROCt source is incorporated into the
@@ -326,10 +364,7 @@ void AieAgent::InitRegionList() {
       new MemoryRegion(false, false, false, false, true, this, dev_mem_props));
 }
 
-void AieAgent::GetAgentProperties() {
-  core::Runtime::runtime_singleton_->AgentDriver(driver_type)
-      .GetAgentProperties(*this);
-}
+void AieAgent::GetAgentProperties() { driver_->GetAgentProperties(*this); }
 
 void AieAgent::InitAllocators() {
   for (const auto *region : regions()) {

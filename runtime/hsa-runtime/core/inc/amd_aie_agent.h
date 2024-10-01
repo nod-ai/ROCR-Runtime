@@ -3,7 +3,7 @@
 // The University of Illinois/NCSA
 // Open Source License (NCSA)
 //
-// Copyright (c) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2022-2024, Advanced Micro Devices, Inc. All rights reserved.
 //
 // Developed by:
 //
@@ -51,6 +51,8 @@
 namespace rocr {
 namespace AMD {
 
+class XdnaDriver;
+
 class AieAgent : public core::Agent {
 public:
   /// @brief AIE agent constructor.
@@ -86,6 +88,21 @@ public:
     return regions_;
   }
 
+  hsa_status_t Map(core::ShareableHandle handle, void *va, size_t offset,
+                   size_t size, int fd, hsa_access_permission_t perms) override;
+
+  hsa_status_t Unmap(core::ShareableHandle handle, void *va, size_t offset,
+                     size_t size) override;
+
+  hsa_status_t ExportDMABuf(void *va, size_t size, int *dmabuf_fd,
+                            size_t *offset) override;
+
+  hsa_status_t ImportDMABuf(int dmabuf_fd,
+                            core::ShareableHandle &handle) override;
+
+  hsa_status_t ReleaseShareableHandle(core::ShareableHandle &handle, void *va,
+                                      size_t size) override;
+
   /// @brief Getter for the AIE system allocator.
   const std::function<void *(size_t size, size_t align,
                              core::MemoryRegion::AllocateFlags flags)> &
@@ -120,6 +137,8 @@ private:
                        core::MemoryRegion::AllocateFlags flags)>
       system_allocator_;
 
+  /// @brief Owning driver.
+  XdnaDriver *driver_ = nullptr;
 
   std::function<void(void*)> system_deallocator_;
 

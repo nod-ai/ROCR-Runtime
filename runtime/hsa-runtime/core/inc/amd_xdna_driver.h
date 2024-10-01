@@ -95,6 +95,34 @@ public:
 
   hsa_status_t GetHandleFromVaddr(void* ptr, uint32_t* handle) override;
 
+  /// @brief Imports a memory chunk via dma-buf.
+  ///
+  /// @param[in] dmabuf_fd dma-buf file descriptor
+  /// @param[out] handle handle to the imported memory
+  hsa_status_t ImportDMABuf(int dmabuf_fd, core::ShareableHandle &handle);
+
+  /// @brief Maps the memory associated with the handle.
+  ///
+  /// @param[in] handle handle to the memory object
+  /// @param[in] va virtual address associated with the handle
+  /// @param[in] offset memory offset in bytes
+  /// @param[in] size memory size in bytes
+  /// @param[perms] perms new permissions
+  hsa_status_t Map(core::ShareableHandle handle, void *va, size_t offset,
+                   size_t size, hsa_access_permission_t perms);
+
+  /// @brief Unmaps the memory associated with the handle.
+  ///
+  /// @param[in] handle handle to the memory object
+  /// @param[in] va virtual address associated with the handle
+  /// @param[in] size memory size in bytes
+  hsa_status_t Unmap(core::ShareableHandle handle, void *va, size_t size);
+
+  /// @brief Releases the object associated with the handle.
+  ///
+  /// @param[in] handle handle of the object to release
+  hsa_status_t ReleaseShareableHandle(core::ShareableHandle &handle);
+
 private:
   hsa_status_t QueryDriverVersion();
   /// @brief Allocate device accesible heap space.

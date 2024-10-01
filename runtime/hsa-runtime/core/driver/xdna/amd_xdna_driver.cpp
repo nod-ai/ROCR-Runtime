@@ -58,6 +58,10 @@
 namespace rocr {
 namespace AMD {
 
+static_assert((sizeof(core::ShareableHandle::handle) >= sizeof(uint32_t)) &&
+                  (alignof(core::ShareableHandle::handle) >= alignof(uint32_t)),
+              "ShareableHandle cannot store a XDNA handle");
+
 XdnaDriver::XdnaDriver(std::string devnode_name)
     : core::Driver(core::DriverType::XDNA, devnode_name) {}
 
@@ -118,7 +122,7 @@ hsa_status_t XdnaDriver::GetAgentProperties(core::Agent &agent) const {
     return HSA_STATUS_ERROR;
   }
 
-  // Right now can only target N-1 columns so putting this 
+  // Right now can only target N-1 columns so putting this
   // here as a workaround
   aie_agent.SetNumCols(aie_metadata.cols - 1);
   aie_agent.SetNumCoreRows(aie_metadata.core.row_count);
@@ -283,6 +287,56 @@ hsa_status_t XdnaDriver::GetHandleFromVaddr(void* ptr, uint32_t* handle) {
   if (it == vmem_handle_mappings_reverse.end())
     return HSA_STATUS_ERROR_INVALID_ALLOCATION;
   *handle = it->second;
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t XdnaDriver::ImportDMABuf(int dmabuf_fd,
+                                      core::ShareableHandle &handle) {
+  drm_prime_handle import_params = {};
+  import_params.handle = AMDXDNA_INVALID_BO_HANDLE;
+  import_params.fd = dmabuf_fd;
+  if (ioctl(fd_, DRM_IOCTL_PRIME_FD_TO_HANDLE, &import_params) < 0)
+    return HSA_STATUS_ERROR;
+
+  handle.handle = import_params.handle;
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t XdnaDriver::Map(core::ShareableHandle handle, void *va,
+                             size_t offset, size_t size,
+                             hsa_access_permission_t perms) {
+  // Get fd associated with the handle.
+  drm_prime_handle params = {};
+  params.handle = handle.handle;
+  params.fd = -1;
+  if (ioctl(fd_, DRM_IOCTL_PRIME_HANDLE_TO_FD, &params) < 0)
+    return HSA_STATUS_ERROR;
+
+  // Change permissions; the result should match the already mapped memory.
+  void *mapped_ptr = mmap(va, size, mmap_perm(perms), MAP_FIXED | MAP_SHARED,
+                          params.fd, offset);
+  if (mapped_ptr != va)
+    return HSA_STATUS_ERROR;
+
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t XdnaDriver::Unmap(core::ShareableHandle handle, void *va,
+                               size_t size) {
+  if (munmap(va, size) != 0)
+    return HSA_STATUS_ERROR;
+
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t XdnaDriver::ReleaseShareableHandle(core::ShareableHandle &handle) {
+  drm_gem_close close_params = {};
+  close_params.handle = handle.handle;
+  if (ioctl(fd_, DRM_IOCTL_GEM_CLOSE, &close_params) < 0)
+    return HSA_STATUS_ERROR;
+
+  handle = {};
+
   return HSA_STATUS_SUCCESS;
 }
 

@@ -3,7 +3,7 @@
 // The University of Illinois/NCSA
 // Open Source License (NCSA)
 //
-// Copyright (c) 2014-2023, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2014-2024, Advanced Micro Devices, Inc. All rights reserved.
 //
 // Developed by:
 //
@@ -76,8 +76,9 @@
 
 #if defined(__linux__)
 // libdrm headers
-#include <xf86drm.h>
 #include <amdgpu.h>
+#include <amdgpu_drm.h>
+#include <xf86drm.h>
 #endif
 
 
@@ -94,6 +95,14 @@ extern HsaApiTable hsa_internal_api_table_;
 
 namespace AMD {
 const uint64_t CP_DMA_DATA_TRANSFER_CNT_MAX = (1 << 26);
+
+const uint32_t GpuAgent::minAqlSize_;
+const uint32_t GpuAgent::maxAqlSize_;
+
+static_assert(
+    (sizeof(core::ShareableHandle::handle) >= sizeof(amdgpu_bo_handle)) &&
+        (alignof(core::ShareableHandle::handle) >= alignof(amdgpu_bo_handle)),
+    "ShareableHandle cannot store a amdgpu_bo_handle");
 
 GpuAgent::GpuAgent(HSAuint32 node, const HsaNodeProperties& node_props, bool xnack_mode,
                    uint32_t index)
@@ -1706,6 +1715,86 @@ hsa_status_t GpuAgent::QueueCreate(size_t size, hsa_queue_type32_t queue_type,
   }
 
   scratchGuard.Dismiss();
+  return HSA_STATUS_SUCCESS;
+}
+
+__forceinline uint64_t drm_perm(hsa_access_permission_t perm) {
+  switch (perm) {
+  case HSA_ACCESS_PERMISSION_RO:
+    return AMDGPU_VM_PAGE_READABLE;
+  case HSA_ACCESS_PERMISSION_WO:
+    return AMDGPU_VM_PAGE_WRITEABLE;
+  case HSA_ACCESS_PERMISSION_RW:
+    return AMDGPU_VM_PAGE_READABLE | AMDGPU_VM_PAGE_WRITEABLE;
+  case HSA_ACCESS_PERMISSION_NONE:
+  default:
+    return 0;
+  }
+}
+
+hsa_status_t GpuAgent::Map(core::ShareableHandle handle, void *va,
+                           size_t offset, size_t size, int fd,
+                           hsa_access_permission_t perms) {
+  const auto ldrm_bo = reinterpret_cast<amdgpu_bo_handle>(handle.handle);
+  if (!ldrm_bo)
+    return HSA_STATUS_ERROR;
+  if (amdgpu_bo_va_op(ldrm_bo, offset, size, reinterpret_cast<uint64_t>(va),
+                      drm_perm(perms), AMDGPU_VA_OP_MAP) != 0)
+    return HSA_STATUS_ERROR;
+
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t GpuAgent::Unmap(core::ShareableHandle handle, void *va,
+                             size_t offset, size_t size) {
+  const auto ldrm_bo = reinterpret_cast<amdgpu_bo_handle>(handle.handle);
+  if (!ldrm_bo)
+    return HSA_STATUS_ERROR;
+
+  if (amdgpu_bo_va_op(ldrm_bo, offset, size, reinterpret_cast<uint64_t>(va), 0,
+                      AMDGPU_VA_OP_UNMAP) != 0)
+    return HSA_STATUS_ERROR;
+
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t GpuAgent::ExportDMABuf(void *va, size_t size, int *dmabuf_fd,
+                                    size_t *offset) {
+  int dmabuf_fd_res = -1;
+  size_t offset_res = 0;
+  if (hsaKmtExportDMABufHandle(va, size, &dmabuf_fd_res, &offset_res) !=
+      HSAKMT_STATUS_SUCCESS)
+    return HSA_STATUS_ERROR_OUT_OF_RESOURCES;
+
+  *dmabuf_fd = dmabuf_fd_res;
+  *offset = offset_res;
+
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t GpuAgent::ImportDMABuf(int dmabuf_fd,
+                                    core::ShareableHandle &handle) {
+  amdgpu_bo_import_result res;
+  auto ret = amdgpu_bo_import(libDrmDev(), amdgpu_bo_handle_type_dma_buf_fd,
+                              dmabuf_fd, &res);
+  if (ret)
+    return HSA_STATUS_ERROR;
+
+  handle.handle = reinterpret_cast<uint64_t>(res.buf_handle);
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t GpuAgent::ReleaseShareableHandle(core::ShareableHandle &handle,
+                                              void *va, size_t size) {
+  const auto ldrm_bo = reinterpret_cast<amdgpu_bo_handle>(handle.handle);
+  if (!ldrm_bo)
+    return HSA_STATUS_ERROR;
+
+  const auto ret = amdgpu_bo_free(ldrm_bo);
+  if (ret)
+    return HSA_STATUS_ERROR;
+
+  handle = {};
   return HSA_STATUS_SUCCESS;
 }
 

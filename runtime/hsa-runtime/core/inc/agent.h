@@ -2,24 +2,24 @@
 //
 // The University of Illinois/NCSA
 // Open Source License (NCSA)
-// 
-// Copyright (c) 2014-2020, Advanced Micro Devices, Inc. All rights reserved.
-// 
+//
+// Copyright (c) 2014-2024, Advanced Micro Devices, Inc. All rights reserved.
+//
 // Developed by:
-// 
+//
 //                 AMD Research and AMD HSA Software Development
-// 
+//
 //                 Advanced Micro Devices, Inc.
-// 
+//
 //                 www.amd.com
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to
 // deal with the Software without restriction, including without limitation
 // the rights to use, copy, modify, merge, publish, distribute, sublicense,
 // and/or sell copies of the Software, and to permit persons to whom the
 // Software is furnished to do so, subject to the following conditions:
-// 
+//
 //  - Redistributions of source code must retain the above copyright notice,
 //    this list of conditions and the following disclaimers.
 //  - Redistributions in binary form must reproduce the above copyright
@@ -29,7 +29,7 @@
 //    nor the names of its contributors may be used to endorse or promote
 //    products derived from this Software without specific prior written
 //    permission.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
@@ -277,6 +277,27 @@ class Agent : public Checked<0xF6BC25EB17E6F917> {
 
   // @brief Returns an array of regions owned by the agent.
   virtual const std::vector<const core::MemoryRegion*>& regions() const = 0;
+
+  // @brief Maps the memory associated with the handle.
+  virtual hsa_status_t Map(core::ShareableHandle handle, void *va,
+                           size_t offset, size_t size, int fd,
+                           hsa_access_permission_t perms) = 0;
+
+  // @brief Unmaps the memory associated with the handle.
+  virtual hsa_status_t Unmap(core::ShareableHandle handle, void *va,
+                             size_t offset, size_t size) = 0;
+
+  // @brief Imports memory using dma-buf.
+  virtual hsa_status_t ExportDMABuf(void *va, size_t size, int *dmabuf_fd,
+                                    size_t *offset) = 0;
+
+  // @brief Imports memory using dma-buf.
+  virtual hsa_status_t ImportDMABuf(int dmabuf_fd,
+                                    core::ShareableHandle &handle) = 0;
+
+  // @brief Releases the shareable handle.
+  virtual hsa_status_t ReleaseShareableHandle(core::ShareableHandle &handle,
+                                              void *va, size_t size) = 0;
 
   // @details Returns the agent's instruction set architecture.
   virtual const Isa* isa() const = 0;

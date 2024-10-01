@@ -3,7 +3,7 @@
 // The University of Illinois/NCSA
 // Open Source License (NCSA)
 //
-// Copyright (c) 2014-2020, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2014-2024, Advanced Micro Devices, Inc. All rights reserved.
 //
 // Developed by:
 //
@@ -317,6 +317,21 @@ class GpuAgent : public GpuAgentInt {
                            uint32_t private_segment_size,
                            uint32_t group_segment_size,
                            core::Queue** queue) override;
+
+  hsa_status_t Map(core::ShareableHandle handle, void *va, size_t offset,
+                   size_t size, int fd, hsa_access_permission_t perms) override;
+
+  hsa_status_t Unmap(core::ShareableHandle handle, void *va, size_t offset,
+                     size_t size) override;
+
+  hsa_status_t ExportDMABuf(void *va, size_t size, int *dmabuf_fd,
+                            size_t *offset) override;
+
+  hsa_status_t ImportDMABuf(int dmabuf_fd,
+                            core::ShareableHandle &handle) override;
+
+  hsa_status_t ReleaseShareableHandle(core::ShareableHandle &handle, void *va,
+                                      size_t size) override;
 
   // @brief Decrement GWS ref count.
   void GWSRelease();
