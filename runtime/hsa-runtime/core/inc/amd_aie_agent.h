@@ -110,6 +110,9 @@ public:
     return system_allocator_;
   }
 
+  /// @brief Getter for the AIE system deallocator.
+  const std::function<void(void*)>& system_deallocator() const { return system_deallocator_; }
+
   // AIE agent methods.
   /// @brief Get the number of columns on this AIE agent.
   int GetNumCols() const { return num_cols_; }
@@ -136,6 +139,8 @@ private:
 
   /// @brief Owning driver.
   XdnaDriver *driver_ = nullptr;
+
+  std::function<void(void*)> system_deallocator_;
 
   const hsa_profile_t profile_ = HSA_PROFILE_BASE;
   const uint32_t min_aql_size_ = 0x40;
