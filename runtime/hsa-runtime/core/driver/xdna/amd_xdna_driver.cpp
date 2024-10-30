@@ -278,14 +278,6 @@ XdnaDriver::ConfigHwCtx(core::Queue &queue,
   }
 }
 
-hsa_status_t XdnaDriver::GetHandleFromVaddr(void* ptr, uint32_t* handle) {
-  auto it = vmem_addr_mappings.find(ptr);
-  if (it == vmem_addr_mappings.end())
-    return HSA_STATUS_ERROR_INVALID_ALLOCATION;
-  *handle = it->second;
-  return HSA_STATUS_SUCCESS;
-}
-
 hsa_status_t XdnaDriver::QueryDriverVersion() {
   amdxdna_drm_query_aie_version aie_version{0, 0};
   amdxdna_drm_get_info args{DRM_AMDXDNA_QUERY_AIE_VERSION, sizeof(aie_version),

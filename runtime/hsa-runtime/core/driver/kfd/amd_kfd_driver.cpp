@@ -257,11 +257,6 @@ KfdDriver::ConfigHwCtx(core::Queue &queue,
   return HSA_STATUS_ERROR_INVALID_AGENT;
 }
 
-hsa_status_t KfdDriver::GetHandleFromVaddr(void* ptr, uint32_t* handle) {
-  // Only AIE queues support this for now.
-  return HSA_STATUS_ERROR_INVALID_AGENT;
-}
-
 void *KfdDriver::AllocateKfdMemory(const HsaMemFlags &flags, uint32_t node_id,
                                    size_t size) {
   void *mem = nullptr;

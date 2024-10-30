@@ -94,7 +94,6 @@ public:
                            hsa_amd_queue_hw_ctx_config_param_t config_type,
                            void *args) override;
 
-  hsa_status_t GetHandleFromVaddr(void* ptr, uint32_t* handle) override;
 
 private:
   hsa_status_t QueryDriverVersion();

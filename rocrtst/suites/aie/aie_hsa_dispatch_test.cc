@@ -204,17 +204,8 @@ int main(int argc, char **argv) {
   uint32_t num_instr;
   load_instr_file(global_dev_mem_pool, instr_inst_file_name,
                 reinterpret_cast<void **>(&instr_inst_buf), num_instr);
-  uint32_t instr_handle = 0;
-  r = hsa_amd_get_handle_from_vaddr(instr_inst_buf, &instr_handle);
-  assert(r == HSA_STATUS_SUCCESS);
-  assert(instr_handle != 0);
-
   load_pdi_file(global_dev_mem_pool, pdi_file_name,
                 reinterpret_cast<void **>(&pdi_buf));
-  uint32_t pdi_handle = 0;
-  r = hsa_amd_get_handle_from_vaddr(pdi_buf, &pdi_handle);
-  assert(r == HSA_STATUS_SUCCESS);
-  assert(pdi_handle != 0);
 
   hsa_amd_aie_ert_hw_ctx_cu_config_addr_t cu_config{.cu_config_addr = reinterpret_cast<uint64_t>(pdi_buf),
                                                .cu_func = 0};
@@ -235,8 +226,6 @@ int main(int argc, char **argv) {
   std::vector<uint32_t *> input(num_pkts);
   std::vector<uint32_t *> output(num_pkts);
   std::vector<hsa_amd_aie_ert_start_kernel_data_t *> cmd_payloads(num_pkts);
-  std::vector<uint32_t> input_handle(num_pkts);
-  std::vector<uint32_t> output_handle(num_pkts);
 
   uint64_t wr_idx = 0;
   uint64_t packet_id = 0;
@@ -245,16 +234,10 @@ int main(int argc, char **argv) {
     r = hsa_amd_memory_pool_allocate(global_kernarg_mem_pool, data_buffer_size, 0,
                                      reinterpret_cast<void **>(&input[pkt_iter]));
     assert(r == HSA_STATUS_SUCCESS);
-    r = hsa_amd_get_handle_from_vaddr(input[pkt_iter], &input_handle[pkt_iter]);
-    assert(r == HSA_STATUS_SUCCESS);
-    assert(input_handle[pkt_iter] != 0);
 
     r = hsa_amd_memory_pool_allocate(global_kernarg_mem_pool, data_buffer_size, 0,
                                      reinterpret_cast<void **>(&output[pkt_iter]));
     assert(r == HSA_STATUS_SUCCESS);
-    r = hsa_amd_get_handle_from_vaddr(output[pkt_iter], &output_handle[pkt_iter]);
-    assert(r == HSA_STATUS_SUCCESS);
-    assert(output_handle[pkt_iter] != 0);
 
     for (std::size_t i = 0; i < num_data_elements; i++) {
       *(input[pkt_iter] + i) = i * (pkt_iter + 1);
