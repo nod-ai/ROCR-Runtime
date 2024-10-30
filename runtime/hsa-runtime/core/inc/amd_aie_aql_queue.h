@@ -183,14 +183,14 @@ private:
   /// @param bo_args A pointer to a vector that contains all bo handles
   /// @param cmd_pkt_payload A pointer to the payload of the command
   static void RegisterCmdBOs(
-      uint32_t count, std::vector<uint32_t> &bo_args,
+      uint32_t count, std::vector<uint32_t> &bo_args, std::vector<uint32_t> &bo_sizes,
       hsa_amd_aie_ert_start_kernel_data_t *cmd_pkt_payload,
       std::unordered_map<void *, uint32_t> &vmem_addr_mappings);
 
   /// @brief Syncs all BOs referenced in bo_args
   ///
   /// @param bo_args vector containing handles of BOs to sync
-  static hsa_status_t SyncBos(std::vector<uint32_t> &bo_args, int fd);
+  static hsa_status_t SyncBos(std::vector<uint32_t> &bo_args,std::vector<uint32_t> &bo_sizes, int fd);
 
   /// @brief Executes a command and waits for its completion
   ///

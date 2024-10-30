@@ -277,6 +277,8 @@ int main(int argc, char **argv) {
     cmd_payload->data[6] = HIGH_ADDR(input[pkt_iter]);
     cmd_payload->data[7] = LOW_ADDR(output[pkt_iter]);
     cmd_payload->data[8] = HIGH_ADDR(output[pkt_iter]);
+    cmd_payload->data[9] = num_data_elements * sizeof(uint32_t);
+    cmd_payload->data[10] = num_data_elements * sizeof(uint32_t);
     cmd_pkt->payload_data = reinterpret_cast<uint64_t>(cmd_payload);
 
     // Keeping track of payloads so we can free them at the end

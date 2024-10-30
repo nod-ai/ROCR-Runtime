@@ -76,9 +76,13 @@ constexpr int DEV_ADDR_OFFSET_MASK = 0x02FFFFFF;
 // https://github.com/amd/xdna-driver/blob/main/src/driver/amdxdna/aie2_message.c#L637
 constexpr int CMD_COUNT_SIZE_INCREASE = 3;
 
+// The size of an instruction in bytes
+constexpr int INSTR_SIZE_BYTES = 4;
+
 // Index of command payload where the instruction sequence
 // address is located
 constexpr int CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_IDX = 2;
+constexpr int CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_SIZE_IDX = 4;
 
 // Environment variable to define job submission timeout
 constexpr const char *TIMEOUT_ENV_VAR = "ROCR_AIE_TIMEOUT";
@@ -244,12 +248,16 @@ void AieAqlQueue::StoreRelaxed(hsa_signal_value_t value) {
             vmem_addr_mappings);
 }
 
-hsa_status_t AieAqlQueue::SyncBos(std::vector<uint32_t> &bo_args, int fd) {
-  for (unsigned int bo_arg : bo_args) {
+hsa_status_t AieAqlQueue::SyncBos(std::vector<uint32_t> &bo_args, std::vector<uint32_t> &bo_sizes, int fd) {
+
+  if (bo_args.size() != bo_sizes.size())
+    return HSA_STATUS_ERROR;
+
+  for (int i = 0; i < bo_args.size(); i++) {
     amdxdna_drm_sync_bo sync_params = {};
-    sync_params.handle = bo_arg;
+    sync_params.handle = bo_args[i];
     sync_params.offset = 0;
-    sync_params.size = 4 * 1024; // TODO: Actually figure this out
+    sync_params.size = bo_sizes[i];
     if (ioctl(fd, DRM_IOCTL_AMDXDNA_SYNC_BO, &sync_params))
       return HSA_STATUS_ERROR;
   }
@@ -277,7 +285,7 @@ hsa_status_t AieAqlQueue::ExecCmdAndWait(amdxdna_drm_exec_cmd *exec_cmd,
 
 void AieAqlQueue::RegisterCmdBOs(
     uint32_t count, std::vector<uint32_t> &bo_args,
-    hsa_amd_aie_ert_start_kernel_data_t *cmd_pkt_payload,
+    std::vector<uint32_t> &bo_sizes, hsa_amd_aie_ert_start_kernel_data_t *cmd_pkt_payload,
     std::unordered_map<void *, uint32_t> &vmem_addr_mappings) {
   // This is the index where the operand addresses start in a command
   const int operand_starting_index = 5;
@@ -295,6 +303,10 @@ void AieAqlQueue::RegisterCmdBOs(
   // Keep track of the handles before we submit the packet
   bo_args.push_back(instr_handle->second);
 
+  // Adding the instruction sequence size. The packet contains the number of instructions.
+  uint32_t instr_bo_size = cmd_pkt_payload->data[CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_SIZE_IDX] * INSTR_SIZE_BYTES;
+  bo_sizes.push_back(instr_bo_size);
+
   // Going through all of the operands in the command, keeping track of the
   // handles and turning the handles into addresses. The starting index of
   // the operands in a command is `operand_starting_index` and the fields
@@ -307,6 +319,13 @@ void AieAqlQueue::RegisterCmdBOs(
     if (operand_handle == vmem_addr_mappings.end())
       return;
     bo_args.push_back(operand_handle->second);
+  }
+
+  // Going through all of the operands in the command, keeping track of
+  // the sizes of each operand. The size is used to sync the buffer
+  uint32_t operand_size_starting_index = operand_starting_index + 2 * num_operands;
+  for (int operand_iter = 0; operand_iter < num_operands; operand_iter++) {
+    bo_sizes.push_back(cmd_pkt_payload->data[operand_size_starting_index + operand_iter]);
   }
 
   // Transform the instruction sequence address into device address
@@ -353,6 +372,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(
     switch (pkt->opcode) {
       case HSA_AMD_AIE_ERT_START_CU: {
         std::vector<uint32_t> bo_args;
+        std::vector<uint32_t> bo_sizes;
         std::vector<uint32_t> cmd_handles;
         std::vector<uint32_t> cmd_sizes;
         std::vector<amdxdna_cmd *> cmds;
@@ -379,7 +399,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(
 
           // Add the handles for all of the BOs to bo_args as well as rewrite
           // the command payload handles to contain the actual virtual addresses
-          RegisterCmdBOs(pkt->count, bo_args, cmd_pkt_payload, vmem_addr_mappings);
+          RegisterCmdBOs(pkt->count, bo_args, bo_sizes, cmd_pkt_payload, vmem_addr_mappings);
 
           // Creating a packet that contains the command to execute the kernel
           uint32_t cmd_bo_handle = 0;
@@ -428,7 +448,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(
         }
 
         // Syncing BOs before we execute the command
-        if (SyncBos(bo_args, fd))
+        if (SyncBos(bo_args, bo_sizes, fd))
           return HSA_STATUS_ERROR;
 
         // Removing duplicates in the bo container. The driver will report
@@ -465,7 +485,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(
         ioctl(fd, DRM_IOCTL_GEM_CLOSE, &close_bo_args);
 
         // Syncing BOs after we execute the command
-        if (SyncBos(bo_args, fd))
+        if (SyncBos(bo_args, bo_sizes, fd))
           return HSA_STATUS_ERROR;
 
         cur_id += num_cont_start_cu_pkts;
