@@ -71,6 +71,7 @@ public:
   hsa_status_t QueryKernelModeDriver(core::DriverQuery query) override;
 
   hsa_status_t GetHandleMappings(std::unordered_map<uint32_t, void*> &vmem_handle_mappings);
+  hsa_status_t GetAddrMappings(std::unordered_map<void*, uint32_t> &vmem_addr_mappings);
   hsa_status_t GetFd(int &fd);
 
   hsa_status_t GetAgentProperties(core::Agent &agent) const override;
@@ -108,16 +109,14 @@ private:
   /// @param config_cu_param CU configuration information.
   hsa_status_t
   ConfigHwCtxCU(core::Queue &queue,
-                hsa_amd_aie_ert_hw_ctx_config_cu_param_t &config_cu_param);
+                hsa_amd_aie_ert_hw_ctx_config_cu_param_addr_t &config_cu_param);
 
-  /// TODO: Probably remove this in the future and rely on the core Runtime
+  /// TODO: Probably remove these in the future and rely on the core Runtime
   /// object to track handle allocations. Using the VMEM API for mapping XDNA
   /// driver handles requires a bit more refactoring. So rely on the XDNA driver
   /// to manage some of this for now.
   std::unordered_map<uint32_t, void *> vmem_handle_mappings;
-
-  // TODO: Remove this once we move to the vmem API
-  std::unordered_map<void*, uint32_t> vmem_handle_mappings_reverse;
+  std::unordered_map<void*, uint32_t> vmem_addr_mappings;
 
   /// @brief Virtual address range allocated for the device heap.
   ///
@@ -128,7 +127,7 @@ private:
 
   /// @brief The aligned device heap.
   void *dev_heap_aligned = nullptr;
-  static constexpr size_t dev_heap_size = 48 * 1024 * 1024;
+  static constexpr size_t dev_heap_size = 64 * 1024 * 1024;
   static constexpr size_t dev_heap_align = 64 * 1024 * 1024;
 };
 

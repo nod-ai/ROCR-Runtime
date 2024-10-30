@@ -165,7 +165,7 @@ private:
   static hsa_status_t SubmitCmd(
       uint32_t hw_ctx_handle, int fd, void *queue_base,
       uint64_t read_dispatch_id, uint64_t write_dispatch_id,
-      std::unordered_map<uint32_t, void *> &vmem_handle_mappings);
+      std::unordered_map<void *, uint32_t> &vmem_addr_mappings);
 
   /// @brief Creates a command BO and returns a pointer to the memory and
   //          the corresponding handle
@@ -185,7 +185,7 @@ private:
   static void RegisterCmdBOs(
       uint32_t count, std::vector<uint32_t> &bo_args,
       hsa_amd_aie_ert_start_kernel_data_t *cmd_pkt_payload,
-      std::unordered_map<uint32_t, void *> &vmem_handle_mappings);
+      std::unordered_map<void *, uint32_t> &vmem_addr_mappings);
 
   /// @brief Syncs all BOs referenced in bo_args
   ///

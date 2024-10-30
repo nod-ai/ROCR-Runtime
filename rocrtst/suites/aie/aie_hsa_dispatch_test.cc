@@ -17,6 +17,9 @@
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_amd.h"
 
+#define LOW_ADDR(addr) (reinterpret_cast<uint64_t>(addr) & 0xFFFFFFFF)
+#define HIGH_ADDR(addr) (reinterpret_cast<uint64_t>(addr) >> 32)
+
 namespace {
 
 hsa_status_t get_agent(hsa_agent_t agent, std::vector<hsa_agent_t> *agents,
@@ -213,10 +216,10 @@ int main(int argc, char **argv) {
   assert(r == HSA_STATUS_SUCCESS);
   assert(pdi_handle != 0);
 
-  hsa_amd_aie_ert_hw_ctx_cu_config_t cu_config{.cu_config_bo = pdi_handle,
+  hsa_amd_aie_ert_hw_ctx_cu_config_addr_t cu_config{.cu_config_addr = reinterpret_cast<uint64_t>(pdi_buf),
                                                .cu_func = 0};
 
-  hsa_amd_aie_ert_hw_ctx_config_cu_param_t config_cu_args{
+  hsa_amd_aie_ert_hw_ctx_config_cu_param_addr_t config_cu_args{
       .num_cus = 1, .cu_configs = &cu_config};
 
   // Configure the queue's hardware context.
@@ -284,13 +287,13 @@ int main(int argc, char **argv) {
     // Transaction opcode
     cmd_payload->data[0] = 0x3;
     cmd_payload->data[1] = 0x0;
-    cmd_payload->data[2] = instr_handle;
-    cmd_payload->data[3] = 0x0;
+    cmd_payload->data[2] = LOW_ADDR(instr_inst_buf);
+    cmd_payload->data[3] = HIGH_ADDR(instr_inst_buf);
     cmd_payload->data[4] = num_instr;
-    cmd_payload->data[5] = input_handle[pkt_iter];
-    cmd_payload->data[6] = 0;
-    cmd_payload->data[7] = output_handle[pkt_iter];
-    cmd_payload->data[8] = 0;
+    cmd_payload->data[5] = LOW_ADDR(input[pkt_iter]);
+    cmd_payload->data[6] = HIGH_ADDR(input[pkt_iter]);
+    cmd_payload->data[7] = LOW_ADDR(output[pkt_iter]);
+    cmd_payload->data[8] = HIGH_ADDR(output[pkt_iter]);
     cmd_pkt->payload_data = reinterpret_cast<uint64_t>(cmd_payload);
 
     // Keeping track of payloads so we can free them at the end
