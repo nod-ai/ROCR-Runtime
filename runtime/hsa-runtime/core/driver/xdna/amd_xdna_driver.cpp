@@ -294,10 +294,9 @@ hsa_status_t XdnaDriver::QueryDriverVersion() {
 }
 
 hsa_status_t XdnaDriver::InitDeviceHeap() {
-  amdxdna_drm_create_bo create_bo_args{.type = AMDXDNA_BO_DEV_HEAP,
-                                       .vaddr =
-                                           reinterpret_cast<uintptr_t>(nullptr),
-                                       .size = dev_heap_size};
+  amdxdna_drm_create_bo create_bo_args{.vaddr = reinterpret_cast<uintptr_t>(nullptr),
+                                       .size = dev_heap_size,
+                                       .type = AMDXDNA_BO_DEV_HEAP};
   amdxdna_drm_get_bo_info get_bo_info_args{0};
   drm_gem_close close_bo_args{0};
 
