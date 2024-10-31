@@ -52,20 +52,26 @@
 
 // Flushes the cache lines assocaited with a BO. This
 // is used to sync a BO without going to the xdna driver.
+// This is from the XRT KMQ shim.
 inline void
 clflush_data(const void *base, size_t offset, size_t len)
 {
+  static long cacheline_size = 0;
 
-  // Getting the cacheline size of the system
-  uint64_t cacheline_size = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
-
-  // Flushing each cache line in the provided address range
-  uint64_t base_addr = reinterpret_cast<uint64_t>(base) + offset;
-  for (int i = 0; i < len / cacheline_size; i++) {
-    uint64_t cur_addr = base_addr + cacheline_size * i;
-    _mm_clflush(reinterpret_cast<void *>(cur_addr));
+  if (!cacheline_size) {
+    long sz = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+    if (sz <= 0)
+      return;
+    cacheline_size = sz;
   }
 
+  const char *cur = (const char *)base;
+  cur += offset;
+  uintptr_t lastline = (uintptr_t)(cur + len - 1) | (cacheline_size - 1);
+  do {
+    _mm_clflush(cur);
+    cur += cacheline_size;
+  } while (cur <= (const char *)lastline);
 }
 
 namespace rocr {
