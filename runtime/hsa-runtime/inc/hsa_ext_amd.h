@@ -1321,6 +1321,7 @@ hsa_status_t HSA_API hsa_amd_image_get_info_max_dim(hsa_agent_t agent,
 
 /**
  * @brief Hardware context configuration for one AIE CU.
+ * specifying handle of CU configuration.
  */
 typedef struct hsa_amd_aie_ert_hw_ctx_cu_config_s {
   /**
@@ -1334,6 +1335,27 @@ typedef struct hsa_amd_aie_ert_hw_ctx_cu_config_s {
   uint8_t reserved[3];
 } hsa_amd_aie_ert_hw_ctx_cu_config_t;
 
+/**
+ * @brief Hardware context configuration for one AIE CU.
+ * specifying address of CU configuration.
+ */
+typedef struct hsa_amd_aie_ert_hw_ctx_cu_config_addr_s {
+  /**
+   * @brief CU configuration BO handle.
+   */
+  uint64_t cu_config_addr;
+  /**
+   * @brief Function of a CU.
+   */
+  uint8_t cu_func;
+  uint8_t reserved[3];
+  
+  /**
+   * @brief The size of the CU configuration
+   */
+  uint32_t cu_size;
+} hsa_amd_aie_ert_hw_ctx_cu_config_addr_t;
+
 typedef struct hsa_amd_aie_ert_hw_ctx_config_cu_param_s {
   /**
    * @brief Number of CUs to configure.
@@ -1345,6 +1367,18 @@ typedef struct hsa_amd_aie_ert_hw_ctx_config_cu_param_s {
    */
   hsa_amd_aie_ert_hw_ctx_cu_config_t *cu_configs;
 } hsa_amd_aie_ert_hw_ctx_config_cu_param_t;
+
+typedef struct hsa_amd_aie_ert_hw_ctx_config_cu_param_addr_s {
+  /**
+   * @brief Number of CUs to configure.
+   */
+  uint16_t num_cus;
+  uint16_t reserved[3];
+  /**
+   * @brief List of CU configurations.
+   */
+  hsa_amd_aie_ert_hw_ctx_cu_config_addr_t *cu_configs;
+} hsa_amd_aie_ert_hw_ctx_config_cu_param_addr_t;
 
 /**
  * brief Specify a hardware context configuration parameter type for a queue.
@@ -1374,9 +1408,6 @@ typedef enum {
 hsa_status_t HSA_API hsa_amd_queue_hw_ctx_config(
     const hsa_queue_t *queue, hsa_amd_queue_hw_ctx_config_param_t config_type,
     void *args);
-
-
-hsa_status_t HSA_API hsa_amd_get_handle_from_vaddr(void* ptr, uint32_t* handle);
 
 /**
  * @brief Set a queue's CU affinity mask.

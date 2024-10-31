@@ -17,6 +17,9 @@
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_amd.h"
 
+#define LOW_ADDR(addr) (reinterpret_cast<uint64_t>(addr) & 0xFFFFFFFF)
+#define HIGH_ADDR(addr) (reinterpret_cast<uint64_t>(addr) >> 32)
+
 namespace {
 
 hsa_status_t get_agent(hsa_agent_t agent, std::vector<hsa_agent_t> *agents,
@@ -97,7 +100,7 @@ hsa_status_t get_coarse_global_kernarg_mem_pool(hsa_amd_memory_pool_t pool,
 }
 
 void load_pdi_file(hsa_amd_memory_pool_t mem_pool, const std::string &file_name,
-                   void **buf) {
+                   void **buf, uint32_t &pdi_size) {
   std::ifstream bin_file(file_name,
                          std::ios::binary | std::ios::ate | std::ios::in);
 
@@ -109,6 +112,7 @@ void load_pdi_file(hsa_amd_memory_pool_t mem_pool, const std::string &file_name,
   auto r = hsa_amd_memory_pool_allocate(mem_pool, size, 0, buf);
   assert(r == HSA_STATUS_SUCCESS);
   bin_file.read(reinterpret_cast<char *>(*buf), size);
+  pdi_size = size;
 }
 
 void load_instr_file(hsa_amd_memory_pool_t mem_pool, const std::string &file_name,
@@ -199,24 +203,18 @@ int main(int argc, char **argv) {
   // Load the DPU and PDI files into a global pool that doesn't support kernel
   // args (DEV BO).
   uint32_t num_instr;
+  uint32_t pdi_size;
   load_instr_file(global_dev_mem_pool, instr_inst_file_name,
                 reinterpret_cast<void **>(&instr_inst_buf), num_instr);
-  uint32_t instr_handle = 0;
-  r = hsa_amd_get_handle_from_vaddr(instr_inst_buf, &instr_handle);
-  assert(r == HSA_STATUS_SUCCESS);
-  assert(instr_handle != 0);
-
   load_pdi_file(global_dev_mem_pool, pdi_file_name,
-                reinterpret_cast<void **>(&pdi_buf));
-  uint32_t pdi_handle = 0;
-  r = hsa_amd_get_handle_from_vaddr(pdi_buf, &pdi_handle);
-  assert(r == HSA_STATUS_SUCCESS);
-  assert(pdi_handle != 0);
+                reinterpret_cast<void **>(&pdi_buf), pdi_size);
 
-  hsa_amd_aie_ert_hw_ctx_cu_config_t cu_config{.cu_config_bo = pdi_handle,
-                                               .cu_func = 0};
+  hsa_amd_aie_ert_hw_ctx_cu_config_addr_t cu_config {
+                              .cu_config_addr = reinterpret_cast<uint64_t>(pdi_buf),
+                              .cu_func = 0,
+                              .cu_size = pdi_size};
 
-  hsa_amd_aie_ert_hw_ctx_config_cu_param_t config_cu_args{
+  hsa_amd_aie_ert_hw_ctx_config_cu_param_addr_t config_cu_args {
       .num_cus = 1, .cu_configs = &cu_config};
 
   // Configure the queue's hardware context.
@@ -232,8 +230,6 @@ int main(int argc, char **argv) {
   std::vector<uint32_t *> input(num_pkts);
   std::vector<uint32_t *> output(num_pkts);
   std::vector<hsa_amd_aie_ert_start_kernel_data_t *> cmd_payloads(num_pkts);
-  std::vector<uint32_t> input_handle(num_pkts);
-  std::vector<uint32_t> output_handle(num_pkts);
 
   uint64_t wr_idx = 0;
   uint64_t packet_id = 0;
@@ -242,16 +238,10 @@ int main(int argc, char **argv) {
     r = hsa_amd_memory_pool_allocate(global_kernarg_mem_pool, data_buffer_size, 0,
                                      reinterpret_cast<void **>(&input[pkt_iter]));
     assert(r == HSA_STATUS_SUCCESS);
-    r = hsa_amd_get_handle_from_vaddr(input[pkt_iter], &input_handle[pkt_iter]);
-    assert(r == HSA_STATUS_SUCCESS);
-    assert(input_handle[pkt_iter] != 0);
 
     r = hsa_amd_memory_pool_allocate(global_kernarg_mem_pool, data_buffer_size, 0,
                                      reinterpret_cast<void **>(&output[pkt_iter]));
     assert(r == HSA_STATUS_SUCCESS);
-    r = hsa_amd_get_handle_from_vaddr(output[pkt_iter], &output_handle[pkt_iter]);
-    assert(r == HSA_STATUS_SUCCESS);
-    assert(output_handle[pkt_iter] != 0);
 
     for (std::size_t i = 0; i < num_data_elements; i++) {
       *(input[pkt_iter] + i) = i * (pkt_iter + 1);
@@ -284,13 +274,15 @@ int main(int argc, char **argv) {
     // Transaction opcode
     cmd_payload->data[0] = 0x3;
     cmd_payload->data[1] = 0x0;
-    cmd_payload->data[2] = instr_handle;
-    cmd_payload->data[3] = 0x0;
+    cmd_payload->data[2] = LOW_ADDR(instr_inst_buf);
+    cmd_payload->data[3] = HIGH_ADDR(instr_inst_buf);
     cmd_payload->data[4] = num_instr;
-    cmd_payload->data[5] = input_handle[pkt_iter];
-    cmd_payload->data[6] = 0;
-    cmd_payload->data[7] = output_handle[pkt_iter];
-    cmd_payload->data[8] = 0;
+    cmd_payload->data[5] = LOW_ADDR(input[pkt_iter]);
+    cmd_payload->data[6] = HIGH_ADDR(input[pkt_iter]);
+    cmd_payload->data[7] = LOW_ADDR(output[pkt_iter]);
+    cmd_payload->data[8] = HIGH_ADDR(output[pkt_iter]);
+    cmd_payload->data[9] = num_data_elements * sizeof(uint32_t);
+    cmd_payload->data[10] = num_data_elements * sizeof(uint32_t);
     cmd_pkt->payload_data = reinterpret_cast<uint64_t>(cmd_payload);
 
     // Keeping track of payloads so we can free them at the end

@@ -189,14 +189,14 @@ XdnaDriver::AllocateMemory(const core::MemoryRegion &mem_region,
   }
 
   vmem_handle_mappings.emplace(create_bo_args.handle, mapped_mem);
-  vmem_handle_mappings_reverse.emplace(mapped_mem, create_bo_args.handle);
+  vmem_addr_mappings.emplace(mapped_mem, create_bo_args.handle);
 
   return HSA_STATUS_SUCCESS;
 }
 
 hsa_status_t XdnaDriver::FreeMemory(void* ptr, size_t size) {
-  auto it = vmem_handle_mappings_reverse.find(ptr);
-  if (it == vmem_handle_mappings_reverse.end())
+  auto it = vmem_addr_mappings.find(ptr);
+  if (it == vmem_addr_mappings.end())
     return HSA_STATUS_ERROR_INVALID_ALLOCATION;
 
   // TODO:ypapadop-amd: need to unmap memory, but we don't know if it's mapped or not as we don't have
@@ -211,7 +211,7 @@ hsa_status_t XdnaDriver::FreeMemory(void* ptr, size_t size) {
   }
 
   vmem_handle_mappings.erase(handle);
-  vmem_handle_mappings_reverse.erase(it);
+  vmem_addr_mappings.erase(it);
 
   return HSA_STATUS_SUCCESS;
 }
@@ -272,18 +272,10 @@ XdnaDriver::ConfigHwCtx(core::Queue &queue,
   case HSA_AMD_QUEUE_AIE_ERT_HW_CXT_CONFIG_CU:
     return ConfigHwCtxCU(
         queue,
-        *reinterpret_cast<hsa_amd_aie_ert_hw_ctx_config_cu_param_t *>(args));
+        *reinterpret_cast<hsa_amd_aie_ert_hw_ctx_config_cu_param_addr_t *>(args));
   default:
     return HSA_STATUS_ERROR_INVALID_ARGUMENT;
   }
-}
-
-hsa_status_t XdnaDriver::GetHandleFromVaddr(void* ptr, uint32_t* handle) {
-  auto it = vmem_handle_mappings_reverse.find(ptr);
-  if (it == vmem_handle_mappings_reverse.end())
-    return HSA_STATUS_ERROR_INVALID_ALLOCATION;
-  *handle = it->second;
-  return HSA_STATUS_SUCCESS;
 }
 
 hsa_status_t XdnaDriver::QueryDriverVersion() {
@@ -302,10 +294,9 @@ hsa_status_t XdnaDriver::QueryDriverVersion() {
 }
 
 hsa_status_t XdnaDriver::InitDeviceHeap() {
-  amdxdna_drm_create_bo create_bo_args{.type = AMDXDNA_BO_DEV_HEAP,
-                                       .vaddr =
-                                           reinterpret_cast<uintptr_t>(nullptr),
-                                       .size = dev_heap_size};
+  amdxdna_drm_create_bo create_bo_args{.vaddr = reinterpret_cast<uintptr_t>(nullptr),
+                                       .size = dev_heap_size,
+                                       .type = AMDXDNA_BO_DEV_HEAP};
   amdxdna_drm_get_bo_info get_bo_info_args{0};
   drm_gem_close close_bo_args{0};
 
@@ -358,6 +349,11 @@ hsa_status_t XdnaDriver::GetHandleMappings(std::unordered_map<uint32_t, void*> &
   return HSA_STATUS_SUCCESS;
 }
 
+hsa_status_t XdnaDriver::GetAddrMappings(std::unordered_map<void*, uint32_t> &vmem_handle_mappings) {
+  vmem_handle_mappings = this->vmem_addr_mappings;
+  return HSA_STATUS_SUCCESS;
+}
+
 hsa_status_t XdnaDriver::GetFd(int &fd) {
   fd = fd_;
   return HSA_STATUS_SUCCESS;
@@ -379,7 +375,7 @@ hsa_status_t XdnaDriver::FreeDeviceHeap() {
 
 hsa_status_t XdnaDriver::ConfigHwCtxCU(
     core::Queue &queue,
-    hsa_amd_aie_ert_hw_ctx_config_cu_param_t &config_cu_param) {
+    hsa_amd_aie_ert_hw_ctx_config_cu_param_addr_t &config_cu_param) {
   if (!AieAqlQueue::IsType(&queue)) {
     return HSA_STATUS_ERROR_INVALID_QUEUE;
   }
@@ -401,17 +397,18 @@ hsa_status_t XdnaDriver::ConfigHwCtxCU(
   xdna_config_cu_param->num_cus = config_cu_param.num_cus;
 
   for (int i = 0; i < xdna_config_cu_param->num_cus; ++i) {
-    xdna_config_cu_param->cu_configs[i].cu_bo =
-        config_cu_param.cu_configs[i].cu_config_bo;
+
+    // Get the handle from the address
+    auto cu_bo = vmem_addr_mappings.find(reinterpret_cast<void *>(config_cu_param.cu_configs[i].cu_config_addr));
+    if (cu_bo == vmem_addr_mappings.end())
+      return HSA_STATUS_ERROR_INVALID_ALLOCATION;
+    
+    xdna_config_cu_param->cu_configs[i].cu_bo = cu_bo->second;
     xdna_config_cu_param->cu_configs[i].cu_func =
         config_cu_param.cu_configs[i].cu_func;
 
     // sync configuration buffer
-    amdxdna_drm_sync_bo sync_args = {};
-    sync_args.handle = xdna_config_cu_param->cu_configs[i].cu_bo;
-    if (ioctl(fd_, DRM_IOCTL_AMDXDNA_SYNC_BO, &sync_args) < 0) {
-      return HSA_STATUS_ERROR;
-    }
+    clflush_data(reinterpret_cast<void *>(config_cu_param.cu_configs[i].cu_config_addr), 0, config_cu_param.cu_configs[i].cu_size);
   }
 
   amdxdna_drm_config_hwctx config_hw_ctx_args{
