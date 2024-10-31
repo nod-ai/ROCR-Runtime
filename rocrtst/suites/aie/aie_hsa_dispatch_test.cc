@@ -100,7 +100,7 @@ hsa_status_t get_coarse_global_kernarg_mem_pool(hsa_amd_memory_pool_t pool,
 }
 
 void load_pdi_file(hsa_amd_memory_pool_t mem_pool, const std::string &file_name,
-                   void **buf) {
+                   void **buf, uint32_t &pdi_size) {
   std::ifstream bin_file(file_name,
                          std::ios::binary | std::ios::ate | std::ios::in);
 
@@ -112,6 +112,7 @@ void load_pdi_file(hsa_amd_memory_pool_t mem_pool, const std::string &file_name,
   auto r = hsa_amd_memory_pool_allocate(mem_pool, size, 0, buf);
   assert(r == HSA_STATUS_SUCCESS);
   bin_file.read(reinterpret_cast<char *>(*buf), size);
+  pdi_size = size;
 }
 
 void load_instr_file(hsa_amd_memory_pool_t mem_pool, const std::string &file_name,
@@ -202,15 +203,18 @@ int main(int argc, char **argv) {
   // Load the DPU and PDI files into a global pool that doesn't support kernel
   // args (DEV BO).
   uint32_t num_instr;
+  uint32_t pdi_size;
   load_instr_file(global_dev_mem_pool, instr_inst_file_name,
                 reinterpret_cast<void **>(&instr_inst_buf), num_instr);
   load_pdi_file(global_dev_mem_pool, pdi_file_name,
-                reinterpret_cast<void **>(&pdi_buf));
+                reinterpret_cast<void **>(&pdi_buf), pdi_size);
 
-  hsa_amd_aie_ert_hw_ctx_cu_config_addr_t cu_config{.cu_config_addr = reinterpret_cast<uint64_t>(pdi_buf),
-                                               .cu_func = 0};
+  hsa_amd_aie_ert_hw_ctx_cu_config_addr_t cu_config {
+                              .cu_config_addr = reinterpret_cast<uint64_t>(pdi_buf),
+                              .cu_func = 0,
+                              .cu_size = pdi_size};
 
-  hsa_amd_aie_ert_hw_ctx_config_cu_param_addr_t config_cu_args{
+  hsa_amd_aie_ert_hw_ctx_config_cu_param_addr_t config_cu_args {
       .num_cus = 1, .cu_configs = &cu_config};
 
   // Configure the queue's hardware context.

@@ -44,10 +44,29 @@
 
 #include <memory>
 #include <unordered_map>
+#include <x86intrin.h>
 
 #include "core/inc/driver.h"
 #include "core/inc/memory_region.h"
 #include "core/driver/xdna/uapi/amdxdna_accel.h"
+
+// Flushes the cache lines assocaited with a BO. This
+// is used to sync a BO without going to the xdna driver.
+inline void
+clflush_data(const void *base, size_t offset, size_t len)
+{
+
+  // Getting the cacheline size of the system
+  uint64_t cacheline_size = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+
+  // Flushing each cache line in the provided address range
+  uint64_t base_addr = reinterpret_cast<uint64_t>(base) + offset;
+  for (int i = 0; i < len / cacheline_size; i++) {
+    uint64_t cur_addr = base_addr + cacheline_size * i;
+    _mm_clflush(reinterpret_cast<void *>(cur_addr));
+  }
+
+}
 
 namespace rocr {
 namespace core {

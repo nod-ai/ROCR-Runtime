@@ -409,13 +409,7 @@ hsa_status_t XdnaDriver::ConfigHwCtxCU(
         config_cu_param.cu_configs[i].cu_func;
 
     // sync configuration buffer
-    amdxdna_drm_sync_bo sync_args = {};
-    sync_args.handle = xdna_config_cu_param->cu_configs[i].cu_bo;
-    sync_args.offset = 0;
-    sync_args.size = 4 * 1024; // TODO: Try this with the proper size
-    if (ioctl(fd_, DRM_IOCTL_AMDXDNA_SYNC_BO, &sync_args) < 0) {
-      return HSA_STATUS_ERROR;
-    }
+    clflush_data(reinterpret_cast<void *>(config_cu_param.cu_configs[i].cu_config_addr), 0, config_cu_param.cu_configs[i].cu_size);
   }
 
   amdxdna_drm_config_hwctx config_hw_ctx_args{

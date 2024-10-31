@@ -1349,6 +1349,11 @@ typedef struct hsa_amd_aie_ert_hw_ctx_cu_config_addr_s {
    */
   uint8_t cu_func;
   uint8_t reserved[3];
+  
+  /**
+   * @brief The size of the CU configuration
+   */
+  uint32_t cu_size;
 } hsa_amd_aie_ert_hw_ctx_cu_config_addr_t;
 
 typedef struct hsa_amd_aie_ert_hw_ctx_config_cu_param_s {

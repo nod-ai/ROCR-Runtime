@@ -248,18 +248,13 @@ void AieAqlQueue::StoreRelaxed(hsa_signal_value_t value) {
             vmem_addr_mappings);
 }
 
-hsa_status_t AieAqlQueue::SyncBos(std::vector<uint32_t> &bo_args, std::vector<uint32_t> &bo_sizes, int fd) {
+hsa_status_t AieAqlQueue::SyncBos(std::vector<uint64_t> &bo_addrs, std::vector<uint32_t> &bo_sizes, int fd) {
 
-  if (bo_args.size() != bo_sizes.size())
+  if (bo_addrs.size() != bo_sizes.size())
     return HSA_STATUS_ERROR;
 
-  for (int i = 0; i < bo_args.size(); i++) {
-    amdxdna_drm_sync_bo sync_params = {};
-    sync_params.handle = bo_args[i];
-    sync_params.offset = 0;
-    sync_params.size = bo_sizes[i];
-    if (ioctl(fd, DRM_IOCTL_AMDXDNA_SYNC_BO, &sync_params))
-      return HSA_STATUS_ERROR;
+  for (int i = 0; i < bo_addrs.size(); i++) {
+    clflush_data(reinterpret_cast<void *>(bo_addrs[i]), 0, bo_sizes[i]);
   }
 
   return HSA_STATUS_SUCCESS;
@@ -285,7 +280,7 @@ hsa_status_t AieAqlQueue::ExecCmdAndWait(amdxdna_drm_exec_cmd *exec_cmd,
 
 void AieAqlQueue::RegisterCmdBOs(
     uint32_t count, std::vector<uint32_t> &bo_args,
-    std::vector<uint32_t> &bo_sizes, hsa_amd_aie_ert_start_kernel_data_t *cmd_pkt_payload,
+    std::vector<uint32_t> &bo_sizes, std::vector<uint64_t> &bo_addrs, hsa_amd_aie_ert_start_kernel_data_t *cmd_pkt_payload,
     std::unordered_map<void *, uint32_t> &vmem_addr_mappings) {
   // This is the index where the operand addresses start in a command
   const int operand_starting_index = 5;
@@ -300,15 +295,16 @@ void AieAqlQueue::RegisterCmdBOs(
   if (instr_handle == vmem_addr_mappings.end())
     return;
 
-  // Keep track of the handles before we submit the packet
+  // Keep track of the handles and addresses before we submit the packet
   bo_args.push_back(instr_handle->second);
+  bo_addrs.push_back(instr_addr);
 
   // Adding the instruction sequence size. The packet contains the number of instructions.
   uint32_t instr_bo_size = cmd_pkt_payload->data[CMD_PKT_PAYLOAD_INSTRUCTION_SEQUENCE_SIZE_IDX] * INSTR_SIZE_BYTES;
   bo_sizes.push_back(instr_bo_size);
 
   // Going through all of the operands in the command, keeping track of the
-  // handles and turning the handles into addresses. The starting index of
+  // addresses and turning the addresses into handles. The starting index of
   // the operands in a command is `operand_starting_index` and the fields
   // are 32-bits we need to iterate over every two
   for (int operand_iter = 0; operand_iter < num_operands; operand_iter++) {
@@ -319,6 +315,7 @@ void AieAqlQueue::RegisterCmdBOs(
     if (operand_handle == vmem_addr_mappings.end())
       return;
     bo_args.push_back(operand_handle->second);
+    bo_addrs.push_back(operand_addr);
   }
 
   // Going through all of the operands in the command, keeping track of
@@ -373,6 +370,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(
       case HSA_AMD_AIE_ERT_START_CU: {
         std::vector<uint32_t> bo_args;
         std::vector<uint32_t> bo_sizes;
+        std::vector<uint64_t> bo_addrs;
         std::vector<uint32_t> cmd_handles;
         std::vector<uint32_t> cmd_sizes;
         std::vector<amdxdna_cmd *> cmds;
@@ -399,7 +397,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(
 
           // Add the handles for all of the BOs to bo_args as well as rewrite
           // the command payload handles to contain the actual virtual addresses
-          RegisterCmdBOs(pkt->count, bo_args, bo_sizes, cmd_pkt_payload, vmem_addr_mappings);
+          RegisterCmdBOs(pkt->count, bo_args, bo_sizes, bo_addrs, cmd_pkt_payload, vmem_addr_mappings);
 
           // Creating a packet that contains the command to execute the kernel
           uint32_t cmd_bo_handle = 0;
@@ -448,7 +446,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(
         }
 
         // Syncing BOs before we execute the command
-        if (SyncBos(bo_args, bo_sizes, fd))
+        if (SyncBos(bo_addrs, bo_sizes, fd))
           return HSA_STATUS_ERROR;
 
         // Removing duplicates in the bo container. The driver will report
@@ -485,7 +483,7 @@ hsa_status_t AieAqlQueue::SubmitCmd(
         ioctl(fd, DRM_IOCTL_GEM_CLOSE, &close_bo_args);
 
         // Syncing BOs after we execute the command
-        if (SyncBos(bo_args, bo_sizes, fd))
+        if (SyncBos(bo_addrs, bo_sizes, fd))
           return HSA_STATUS_ERROR;
 
         cur_id += num_cont_start_cu_pkts;
